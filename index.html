@@ -1,1191 +1,1464 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-<title>3D Product Configurator</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>3D Configurator</title>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Three.js r134 — more stable GLB loading than r128 -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-/* ─── TOKENS ─────────────────────────────────────── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* ═══════════════════════════════════
+   DESIGN TOKENS — DARK / LIGHT
+═══════════════════════════════════ */
 :root{
-  --bg:#0e0e0f;--surface:#17171a;--panel:#1e1e22;--border:#2e2e35;
-  --accent:#e8ff47;--accent2:#ff5c3a;--text:#f0f0f2;--muted:#6e6e7a;
-  --radius:8px;--sidebar:320px;
-  --mono:'DM Mono',monospace;--display:'Syne',sans-serif;
+  /* dark (default) */
+  --bg:#111114;
+  --surface:#1c1c20;
+  --panel:#252529;
+  --card:#2e2e34;
+  --border:#38383f;
+  --accent:#6c63ff;
+  --accent-glow:rgba(108,99,255,.25);
+  --accent2:#ff6b6b;
+  --text:#f2f2f5;
+  --text2:#9999a8;
+  --text3:#5a5a6a;
+  --radius:14px;
+  --radius-sm:8px;
+  --shadow:0 4px 24px rgba(0,0,0,.45);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.3);
+  --font:'Inter',system-ui,sans-serif;
+  --panel-h:52vh;   /* bottom panel height on mobile */
+  --toolbar-h:60px;
 }
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono)}
+[data-theme="light"]{
+  --bg:#f0f0f5;
+  --surface:#ffffff;
+  --panel:#f7f7fb;
+  --card:#ececf2;
+  --border:#d8d8e2;
+  --text:#1a1a2e;
+  --text2:#5a5a7a;
+  --text3:#9999b0;
+  --shadow:0 4px 24px rgba(0,0,0,.10);
+  --shadow-sm:0 2px 8px rgba(0,0,0,.07);
+  --accent-glow:rgba(108,99,255,.12);
+}
 
-/* ─── SHELL ──────────────────────────────────────── */
-#app{display:flex;height:100vh;width:100vw;overflow:hidden}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--text);transition:background .3s,color .3s}
+button{cursor:pointer;font-family:inherit;border:none;outline:none}
+input,select{font-family:inherit}
 
-/* ─── VIEWPORT ───────────────────────────────────── */
+/* ═══════════════════════════════════
+   APP SHELL — DESKTOP vs MOBILE
+═══════════════════════════════════ */
+#app{
+  display:flex;
+  flex-direction:row;   /* desktop: side-by-side */
+  width:100vw;
+  height:100vh;
+  overflow:hidden;
+}
+
+/* ═══════════════════════════════════
+   3D VIEWPORT
+═══════════════════════════════════ */
 #viewport{
-  flex:1;position:relative;overflow:hidden;
-  background:radial-gradient(ellipse at 40% 50%,#1a1a28 0%,#0e0e0f 70%);
+  flex:1;
+  position:relative;
+  overflow:hidden;
+  min-height:0;
+  background:var(--bg);
 }
-#three-canvas{display:block;width:100%;height:100%;touch-action:none}
+#three-canvas{
+  display:block;
+  width:100%;
+  height:100%;
+  touch-action:none;  /* critical: prevents browser scroll hijack */
+}
 
-/* loader */
+/* Grid background pattern */
+#viewport::before{
+  content:'';
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(var(--border) 1px,transparent 1px),
+    linear-gradient(90deg,var(--border) 1px,transparent 1px);
+  background-size:40px 40px;
+  opacity:.18;
+  pointer-events:none;
+}
+
+/* Loader overlay */
 #loader{
-  position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;background:var(--bg);
-  z-index:10;gap:16px;transition:opacity .4s
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:20px;z-index:50;
+  background:var(--bg);
+  transition:opacity .5s;
 }
-#loader.hidden{opacity:0;pointer-events:none}
-.loader-bar{width:200px;height:2px;background:var(--border);border-radius:2px;overflow:hidden}
-.loader-fill{height:100%;background:var(--accent);width:0%;transition:width .3s}
-#loader p{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
-
-/* corner labels */
-.vp-label{position:absolute;font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;pointer-events:none}
-.vp-label.tl{top:18px;left:20px}
-.vp-label.br{bottom:18px;right:20px}
-
-/* hint */
-#hint{
-  position:absolute;bottom:18px;left:20px;display:flex;align-items:center;gap:8px;
-  background:rgba(255,255,255,.05);border:1px solid var(--border);
-  padding:6px 12px;border-radius:99px;font-size:10px;color:var(--muted);
-  letter-spacing:.08em;pointer-events:none;transition:opacity .3s
+#loader.out{opacity:0;pointer-events:none}
+.ld-ring{
+  width:52px;height:52px;
+  border:3px solid var(--border);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin 1s linear infinite;
 }
-.hint-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ld-text{font-size:13px;color:var(--text2);letter-spacing:.04em}
+.ld-bar{width:180px;height:3px;background:var(--border);border-radius:99px;overflow:hidden;display:none}
+.ld-bar-fill{height:100%;background:var(--accent);width:0%;transition:width .2s}
 
-/* draw-mode indicator */
+/* Floating toolbar inside viewport */
+#vp-toolbar{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  display:flex;gap:8px;align-items:center;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:99px;
+  padding:6px 14px;
+  box-shadow:var(--shadow-sm);
+  z-index:10;
+}
+.vp-btn{
+  width:32px;height:32px;border-radius:50%;
+  background:none;color:var(--text2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;transition:all .15s;
+}
+.vp-btn:hover,.vp-btn.active{background:var(--accent);color:#fff}
+.vp-divider{width:1px;height:20px;background:var(--border)}
+
+/* Mode badge */
 #mode-badge{
-  position:absolute;top:18px;right:20px;background:var(--accent2);color:#fff;
-  font-size:10px;letter-spacing:.1em;text-transform:uppercase;
-  padding:5px 12px;border-radius:99px;display:none;font-family:var(--mono);pointer-events:none
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  background:var(--accent2);color:#fff;
+  font-size:11px;font-weight:600;letter-spacing:.06em;
+  padding:6px 16px;border-radius:99px;
+  display:none;pointer-events:none;z-index:10;
+  box-shadow:0 4px 16px rgba(255,107,107,.4);
 }
 
-/* draw cursor */
+/* Draw cursor */
 #draw-cursor{
   position:absolute;border-radius:50%;pointer-events:none;
   transform:translate(-50%,-50%);display:none;z-index:5;
-  border:2px solid var(--accent2)
+  border:2px solid var(--accent2);
+  box-shadow:0 0 0 1px rgba(0,0,0,.3);
 }
 
-/* ─── SIDEBAR ─────────────────────────────────────── */
+/* ═══════════════════════════════════
+   SIDEBAR — DESKTOP
+═══════════════════════════════════ */
 #sidebar{
-  width:var(--sidebar);height:100vh;background:var(--surface);
-  border-left:1px solid var(--border);display:flex;flex-direction:column;
-  overflow:hidden;flex-shrink:0;z-index:20
+  width:320px;
+  height:100vh;
+  background:var(--surface);
+  border-left:1px solid var(--border);
+  display:flex;flex-direction:column;
+  overflow:hidden;flex-shrink:0;
+  z-index:20;
+  transition:background .3s,border-color .3s;
 }
-.sb-header{
-  padding:20px 20px 16px;border-bottom:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+
+/* ═══════════════════════════════════
+   BOTTOM PANEL — MOBILE
+═══════════════════════════════════ */
+/* Applied via JS class .mobile-layout */
+.mobile-layout #app{flex-direction:column}
+.mobile-layout #viewport{height:calc(100vh - var(--panel-h) - var(--toolbar-h));flex:none}
+.mobile-layout #sidebar{
+  width:100%;height:var(--panel-h);
+  border-left:none;border-top:1px solid var(--border);
+  border-radius:20px 20px 0 0;
 }
-.sb-logo{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:-.01em}
+
+/* ── Sidebar header ── */
+.sb-top{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 20px 12px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.sb-logo{font-size:17px;font-weight:700;letter-spacing:-.02em}
 .sb-logo span{color:var(--accent)}
-.sb-badge{
-  font-size:9px;letter-spacing:.12em;text-transform:uppercase;
-  background:var(--accent);color:#000;padding:3px 8px;border-radius:99px;
-  font-family:var(--mono);font-weight:500
+.sb-actions{display:flex;gap:8px;align-items:center}
+.icon-btn{
+  width:36px;height:36px;border-radius:10px;
+  background:var(--card);color:var(--text2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;transition:all .15s;border:1px solid var(--border);
 }
-.tab-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
-.tab-btn{
-  flex:1;padding:12px 4px;background:none;border:none;color:var(--muted);
-  font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-  cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s
+.icon-btn:hover,.icon-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* ── Tool bar ── */
+#tool-bar{
+  display:flex;gap:0;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+  overflow-x:auto;
+  scrollbar-width:none;
 }
-.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
-.tab-btn:hover:not(.active){color:var(--text)}
+#tool-bar::-webkit-scrollbar{display:none}
+.tool-tab{
+  flex:1;min-width:56px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:10px 4px;
+  background:none;color:var(--text3);
+  font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  border-bottom:2px solid transparent;
+  transition:all .15s;
+}
+.tool-tab .ti{font-size:18px;line-height:1}
+.tool-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* ── Panels ── */
 .panels-wrap{
   flex:1;overflow-y:auto;overflow-x:hidden;
-  scrollbar-width:thin;scrollbar-color:var(--border) transparent
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent;
 }
 .panels-wrap::-webkit-scrollbar{width:4px}
 .panels-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-.tab-panel{display:none;padding:20px;gap:20px;flex-direction:column}
+.tab-panel{display:none;flex-direction:column;gap:0;padding:16px}
 .tab-panel.active{display:flex}
 
-/* sections */
-.section{display:flex;flex-direction:column;gap:10px}
-.section-label{
-  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
-  display:flex;align-items:center;gap:8px
+/* ── Section ── */
+.section{margin-bottom:20px}
+.sec-label{
+  font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--text3);margin-bottom:10px;
+  display:flex;align-items:center;gap:8px;
 }
-.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+.sec-label::after{content:'';flex:1;height:1px;background:var(--border)}
 
-/* controls */
-.control-row{display:flex;align-items:center;gap:10px}
-.control-row label{font-size:11px;color:var(--muted);flex-shrink:0;min-width:66px}
-input[type="color"]{
-  -webkit-appearance:none;width:40px;height:32px;border:1px solid var(--border);
-  border-radius:var(--radius);background:var(--panel);cursor:pointer;padding:2px;flex-shrink:0
-}
-input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
-input[type="color"]::-webkit-color-swatch{border:none;border-radius:5px}
+/* ── Controls ── */
+.ctrl-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ctrl-label{font-size:12px;color:var(--text2);flex-shrink:0;min-width:56px}
+.ctrl-val{font-size:11px;color:var(--text3);min-width:38px;text-align:right;font-variant-numeric:tabular-nums}
+
 input[type="range"]{
-  -webkit-appearance:none;flex:1;height:3px;background:var(--border);
-  border-radius:99px;outline:none;cursor:pointer
+  -webkit-appearance:none;flex:1;height:4px;
+  background:var(--border);border-radius:99px;outline:none;cursor:pointer;
 }
 input[type="range"]::-webkit-slider-thumb{
-  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
-  background:var(--accent);cursor:pointer;box-shadow:0 0 0 3px rgba(232,255,71,.15)
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--accent);cursor:pointer;
+  box-shadow:0 0 0 4px var(--accent-glow);
 }
-.range-val{font-size:11px;color:var(--muted);min-width:36px;text-align:right}
+input[type="range"]::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;border:none;
+  background:var(--accent);cursor:pointer;
+}
+
+input[type="color"]{
+  -webkit-appearance:none;width:36px;height:36px;
+  border:2px solid var(--border);border-radius:10px;
+  background:var(--card);cursor:pointer;padding:2px;flex-shrink:0;
+}
+input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+input[type="color"]::-webkit-color-swatch{border:none;border-radius:7px}
+
 input[type="text"],select{
-  width:100%;background:var(--panel);border:1px solid var(--border);
-  border-radius:var(--radius);color:var(--text);font-family:var(--mono);
-  font-size:12px;padding:8px 12px;outline:none;transition:border-color .2s
+  width:100%;background:var(--card);border:1.5px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text);
+  font-size:13px;padding:10px 12px;outline:none;
+  transition:border-color .2s;
 }
 input[type="text"]:focus,select:focus{border-color:var(--accent)}
 
-/* buttons */
+/* ── Buttons ── */
 .btn{
   display:flex;align-items:center;justify-content:center;gap:8px;
-  padding:10px 16px;border-radius:var(--radius);font-family:var(--mono);
-  font-size:11px;letter-spacing:.08em;text-transform:uppercase;
-  cursor:pointer;border:1px solid var(--border);background:var(--panel);
-  color:var(--text);transition:all .2s;width:100%
+  padding:12px 16px;border-radius:var(--radius-sm);
+  font-size:13px;font-weight:600;letter-spacing:.01em;
+  cursor:pointer;transition:all .15s;width:100%;
+  border:1.5px solid var(--border);background:var(--card);color:var(--text);
 }
 .btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:500}
-.btn.primary:hover{background:#d4eb3c}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.1)}
 .btn.danger{border-color:var(--accent2);color:var(--accent2)}
-.btn.danger:hover{background:rgba(255,92,58,.1)}
-.btn.active-state{background:rgba(255,92,58,.15);border-color:var(--accent2);color:var(--accent2)}
+.btn.danger:hover{background:rgba(255,107,107,.12)}
+.btn.draw-on{background:var(--accent2);border-color:var(--accent2);color:#fff}
+.btn-row{display:flex;gap:8px}
+.btn-row .btn{flex:1}
 
-/* swatches */
-.swatch-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+/* ── Color swatches ── */
+.swatch-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:7px}
 .swatch{
-  width:100%;aspect-ratio:1;border-radius:5px;cursor:pointer;
-  border:2px solid transparent;transition:transform .15s,border-color .15s
+  aspect-ratio:1;border-radius:10px;cursor:pointer;
+  border:3px solid transparent;transition:transform .15s,border-color .15s;
 }
-.swatch:hover{transform:scale(1.12)}
-.swatch.selected{border-color:var(--accent)}
+.swatch:hover{transform:scale(1.1)}
+.swatch.selected{border-color:var(--accent);transform:scale(1.05)}
 
-/* dropzone */
+/* ── Upload dropzone ── */
 .dropzone{
-  border:1.5px dashed var(--border);border-radius:var(--radius);
+  border:2px dashed var(--border);border-radius:var(--radius);
   padding:24px 16px;text-align:center;cursor:pointer;
-  transition:border-color .2s,background .2s;
-  display:flex;flex-direction:column;align-items:center;gap:8px
+  transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:8px;
+  background:var(--card);
 }
-.dropzone:hover,.dropzone.drag-over{border-color:var(--accent);background:rgba(232,255,71,.04)}
-.dropzone-icon{font-size:28px;line-height:1}
-.dropzone p{font-size:11px;color:var(--muted);letter-spacing:.06em}
-.dropzone p strong{color:var(--text)}
+.dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--accent-glow)}
+.dz-icon{font-size:32px;line-height:1}
+.dz-text{font-size:13px;font-weight:600;color:var(--text)}
+.dz-sub{font-size:11px;color:var(--text3)}
 
-/* layer list */
-.layer-list{display:flex;flex-direction:column;gap:4px}
+/* ── Layer list ── */
+.layer-list{display:flex;flex-direction:column;gap:6px}
 .layer-item{
-  display:flex;align-items:center;gap:10px;padding:8px 10px;
-  background:var(--panel);border:1px solid var(--border);
-  border-radius:var(--radius);font-size:11px;cursor:pointer;transition:border-color .2s
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;background:var(--card);
+  border:1.5px solid var(--border);border-radius:var(--radius-sm);
+  cursor:pointer;transition:border-color .15s;
 }
-.layer-item:hover{border-color:var(--muted)}
-.layer-item.selected{border-color:var(--accent)}
-.layer-thumb{
-  width:32px;height:32px;border-radius:4px;background:var(--border);
-  overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center
+.layer-item:hover{border-color:var(--text3)}
+.layer-item.sel{border-color:var(--accent)}
+.l-thumb{
+  width:36px;height:36px;border-radius:8px;
+  background:var(--border);overflow:hidden;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:14px;
 }
-.layer-thumb img{width:100%;height:100%;object-fit:cover}
-.layer-name{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.layer-type{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
-.layer-del{
-  background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;
-  padding:2px 6px;border-radius:4px;transition:color .2s,background .2s;flex-shrink:0
+.l-thumb img{width:100%;height:100%;object-fit:cover}
+.l-info{flex:1;min-width:0}
+.l-name{font-size:12px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.l-type{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.l-del{
+  background:none;color:var(--text3);font-size:16px;
+  width:28px;height:28px;border-radius:8px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  transition:all .15s;
 }
-.layer-del:hover{color:var(--accent2);background:rgba(255,92,58,.1)}
+.l-del:hover{background:rgba(255,107,107,.15);color:var(--accent2)}
 
-/* transform panel */
-#transform-panel{
-  background:var(--panel);border:1px solid var(--accent);border-left:3px solid var(--accent);
-  border-radius:var(--radius);padding:14px;display:none;flex-direction:column;gap:10px
+/* ── Transform panel (selected layer) ── */
+#xform-panel{
+  background:var(--panel);border:1.5px solid var(--accent);
+  border-radius:var(--radius);padding:14px;
+  display:none;flex-direction:column;gap:10px;
+  margin-bottom:14px;
 }
-#transform-panel.visible{display:flex}
-.tp-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
+#xform-panel.show{display:flex}
+.xf-title{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
 
-/* brush preview */
-.brush-preview{display:flex;align-items:center;justify-content:center;height:44px}
-.brush-circle{border-radius:50%;transition:width .15s,height .15s}
-
-/* footer */
-.sb-footer{
-  padding:14px 20px;border-top:1px solid var(--border);
-  display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+/* ── Brush preview ── */
+.brush-preview{
+  display:flex;align-items:center;justify-content:center;
+  height:50px;background:var(--card);border-radius:var(--radius-sm);
+  border:1px solid var(--border);
 }
+.brush-dot{border-radius:50%;background:var(--accent2);transition:all .15s}
 
-/* toast */
+/* ── Theme toggle ── */
+#theme-toggle .ti{transition:transform .3s}
+
+/* ── Toast ── */
 #toast{
-  position:fixed;bottom:24px;left:50%;
-  transform:translateX(-50%) translateY(60px);
-  background:var(--panel);border:1px solid var(--border);
-  padding:10px 20px;border-radius:99px;font-size:11px;
-  letter-spacing:.08em;color:var(--text);
-  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
-  z-index:999;white-space:nowrap;pointer-events:none
+  position:fixed;bottom:30px;left:50%;
+  transform:translateX(-50%) translateY(80px);
+  background:var(--text);color:var(--bg);
+  font-size:13px;font-weight:600;
+  padding:10px 22px;border-radius:99px;
+  box-shadow:var(--shadow);
+  transition:transform .35s cubic-bezier(.34,1.56,.64,1);
+  z-index:999;pointer-events:none;white-space:nowrap;
 }
 #toast.show{transform:translateX(-50%) translateY(0)}
 
-/* responsive */
-@media(max-width:768px){
-  #app{flex-direction:column}
-  #viewport{height:50vh;width:100vw;flex:none}
-  #sidebar{width:100vw;height:50vh;border-left:none;border-top:1px solid var(--border)}
+/* ── No-model hint ── */
+#no-model-hint{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;pointer-events:none;
+}
+#no-model-hint .nm-icon{font-size:48px;opacity:.4}
+#no-model-hint p{font-size:14px;color:var(--text2);text-align:center;max-width:220px;line-height:1.6;opacity:.7}
+
+/* ── Mobile bottom toolbar ── */
+#mobile-bottom{
+  display:none;
+  height:var(--toolbar-h);
+  background:var(--surface);
+  border-top:1px solid var(--border);
+  align-items:center;justify-content:space-around;
+  flex-shrink:0;
+  z-index:25;
+}
+.mobile-layout #mobile-bottom{display:flex}
+.mob-btn{
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  background:none;color:var(--text3);font-size:9px;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;padding:6px 14px;
+  border-radius:12px;transition:all .15s;
+}
+.mob-btn .ti{font-size:22px;line-height:1}
+.mob-btn.active,.mob-btn:active{color:var(--accent)}
+
+/* ═══════════════════════════════════
+   MOBILE RESPONSIVE
+═══════════════════════════════════ */
+@media(max-width:700px){
+  :root{--panel-h:50vh;--toolbar-h:56px}
+  .sb-top{padding:12px 16px 10px}
+  .tab-panel{padding:12px}
+  .tool-tab{min-width:48px;font-size:8px}
 }
 </style>
 </head>
 <body>
 <div id="app">
 
-<!-- ══════════ VIEWPORT ══════════ -->
+<!-- ════════════════════ 3D VIEWPORT ════════════════════ -->
 <div id="viewport">
+
+  <!-- Loading spinner -->
   <div id="loader">
-    <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
-    <p>Loading model…</p>
+    <div class="ld-ring"></div>
+    <div class="ld-bar" id="ld-bar"><div class="ld-bar-fill" id="ld-fill"></div></div>
+    <div class="ld-text" id="ld-text">Initializing…</div>
   </div>
-  <div class="vp-label tl">Studio / Preview</div>
-  <div class="vp-label br">Scroll to zoom</div>
-  <div id="hint"><div class="hint-dot"></div>Rotate · Pinch to zoom</div>
+
+  <!-- No-model fallback hint -->
+  <div id="no-model-hint" style="display:none">
+    <div class="nm-icon">📦</div>
+    <p>Place <strong>model.glb</strong> in the same folder, then open via Live Server</p>
+  </div>
+
+  <!-- Floating toolbar -->
+  <div id="vp-toolbar">
+    <button class="vp-btn" id="btn-reset-cam" title="Reset camera">⟳</button>
+    <div class="vp-divider"></div>
+    <button class="vp-btn" id="btn-draw-vp" title="Draw mode">✏️</button>
+    <div class="vp-divider"></div>
+    <button class="vp-btn" id="btn-deselect" title="Deselect">✕</button>
+  </div>
+
+  <!-- Draw mode badge -->
   <div id="mode-badge">✏ DRAW MODE</div>
+
+  <!-- Draw cursor ring -->
   <div id="draw-cursor"></div>
+
+  <!-- Three.js canvas -->
   <canvas id="three-canvas"></canvas>
 </div>
 
-<!-- ══════════ SIDEBAR ══════════ -->
+<!-- ════════════════════ SIDEBAR ════════════════════ -->
 <aside id="sidebar">
-  <div class="sb-header">
-    <div class="sb-logo">Config<span>.</span>3D</div>
-    <div class="sb-badge">Pro</div>
+
+  <!-- Header -->
+  <div class="sb-top">
+    <div class="sb-logo">Stitch<span>.</span>3D</div>
+    <div class="sb-actions">
+      <button class="icon-btn" id="theme-toggle" title="Toggle theme">
+        <span class="ti">🌙</span>
+      </button>
+      <button class="icon-btn danger" id="btn-clear-all" title="Clear all">🗑</button>
+    </div>
   </div>
 
-  <div class="tab-bar">
-    <button class="tab-btn active" data-tab="color">Color</button>
-    <button class="tab-btn" data-tab="image">Image</button>
-    <button class="tab-btn" data-tab="text">Text</button>
-    <button class="tab-btn" data-tab="draw">Draw</button>
-    <button class="tab-btn" data-tab="layers">Layers</button>
+  <!-- Tool tabs -->
+  <div id="tool-bar">
+    <button class="tool-tab active" data-tab="color"><span class="ti">🎨</span>Color</button>
+    <button class="tool-tab" data-tab="image"><span class="ti">🖼</span>Image</button>
+    <button class="tool-tab" data-tab="text"><span class="ti">✍️</span>Text</button>
+    <button class="tool-tab" data-tab="draw"><span class="ti">✏️</span>Draw</button>
+    <button class="tool-tab" data-tab="layers"><span class="ti">📚</span>Layers</button>
   </div>
 
+  <!-- Panels -->
   <div class="panels-wrap">
 
-    <!-- COLOR TAB -->
+    <!-- ─── COLOR ─── -->
     <div class="tab-panel active" id="tab-color">
       <div class="section">
-        <div class="section-label">Base Color</div>
-        <div class="control-row">
-          <label>Pick</label>
+        <div class="sec-label">Base Color</div>
+        <div class="ctrl-row">
+          <label class="ctrl-label">Pick</label>
           <input type="color" id="base-color" value="#f5f0e8"/>
-          <span id="base-color-hex" style="font-size:11px;color:var(--muted)">#f5f0e8</span>
+          <span id="base-hex" style="font-size:12px;color:var(--text2)">#f5f0e8</span>
         </div>
       </div>
       <div class="section">
-        <div class="section-label">Presets</div>
+        <div class="sec-label">Presets</div>
         <div class="swatch-grid" id="swatch-grid"></div>
       </div>
       <div class="section">
-        <div class="section-label">Material</div>
-        <div class="control-row">
-          <label>Roughness</label>
+        <div class="sec-label">Material</div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Rough</span>
           <input type="range" id="roughness" min="0" max="100" value="80"/>
-          <span class="range-val" id="roughness-val">0.80</span>
+          <span class="ctrl-val" id="roughness-val">0.80</span>
         </div>
-        <div class="control-row">
-          <label>Metalness</label>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Metal</span>
           <input type="range" id="metalness" min="0" max="100" value="0"/>
-          <span class="range-val" id="metalness-val">0.00</span>
+          <span class="ctrl-val" id="metalness-val">0.00</span>
         </div>
-      </div>
-      <div class="section">
-        <div class="section-label">Actions</div>
-        <button class="btn danger" id="btn-clear-all">✕ Clear All Layers</button>
       </div>
     </div>
 
-    <!-- IMAGE TAB -->
+    <!-- ─── IMAGE ─── -->
     <div class="tab-panel" id="tab-image">
       <div class="section">
-        <div class="section-label">Upload Image</div>
+        <div class="sec-label">Upload</div>
         <div class="dropzone" id="dropzone">
-          <div class="dropzone-icon">🖼</div>
-          <p><strong>Click or drag</strong> an image here</p>
-          <p>PNG · JPG · SVG · WebP</p>
+          <div class="dz-icon">📁</div>
+          <div class="dz-text">Tap to upload image</div>
+          <div class="dz-sub">PNG · JPG · WebP · SVG</div>
         </div>
-        <input type="file" id="img-upload" accept="image/*" style="display:none"/>
+        <input type="file" id="img-file" accept="image/*" style="display:none"/>
       </div>
-      <div id="img-transform-section" style="display:none;flex-direction:column;gap:10px">
-        <div class="section-label">Position &amp; Transform (live)</div>
-        <div class="control-row">
-          <label>X</label>
-          <input type="range" id="img-x" min="0" max="100" value="50"/>
-          <span class="range-val" id="img-x-val">50%</span>
+      <div id="img-xform" style="display:none">
+        <div class="section">
+          <div class="sec-label">Transform</div>
+          <div class="ctrl-row"><span class="ctrl-label">X</span><input type="range" id="img-x" min="0" max="100" value="50"/><span class="ctrl-val" id="img-x-v">50%</span></div>
+          <div class="ctrl-row"><span class="ctrl-label">Y</span><input type="range" id="img-y" min="0" max="100" value="50"/><span class="ctrl-val" id="img-y-v">50%</span></div>
+          <div class="ctrl-row"><span class="ctrl-label">Scale</span><input type="range" id="img-s" min="5" max="200" value="40"/><span class="ctrl-val" id="img-s-v">40%</span></div>
+          <div class="ctrl-row"><span class="ctrl-label">Rotate</span><input type="range" id="img-r" min="-180" max="180" value="0"/><span class="ctrl-val" id="img-r-v">0°</span></div>
+          <div class="ctrl-row"><span class="ctrl-label">Opacity</span><input type="range" id="img-o" min="0" max="100" value="100"/><span class="ctrl-val" id="img-o-v">100%</span></div>
         </div>
-        <div class="control-row">
-          <label>Y</label>
-          <input type="range" id="img-y" min="0" max="100" value="50"/>
-          <span class="range-val" id="img-y-val">50%</span>
-        </div>
-        <div class="control-row">
-          <label>Scale</label>
-          <input type="range" id="img-scale" min="5" max="200" value="40"/>
-          <span class="range-val" id="img-scale-val">40%</span>
-        </div>
-        <div class="control-row">
-          <label>Rotate</label>
-          <input type="range" id="img-rotate" min="-180" max="180" value="0"/>
-          <span class="range-val" id="img-rotate-val">0°</span>
-        </div>
-        <div class="control-row">
-          <label>Opacity</label>
-          <input type="range" id="img-opacity" min="0" max="100" value="100"/>
-          <span class="range-val" id="img-opacity-val">100%</span>
-        </div>
-        <p style="font-size:10px;color:var(--muted);line-height:1.6">
-          💡 You can also drag the image directly on the 3D model.
+        <p style="font-size:11px;color:var(--text3);padding-bottom:8px;line-height:1.7">
+          💡 <strong style="color:var(--text2)">Drag</strong> image on model to move · <strong style="color:var(--text2)">Pinch</strong> to scale/rotate
         </p>
       </div>
     </div>
 
-    <!-- TEXT TAB -->
+    <!-- ─── TEXT ─── -->
     <div class="tab-panel" id="tab-text">
       <div class="section">
-        <div class="section-label">Content</div>
-        <input type="text" id="text-input" placeholder="Your custom text…" value="MY TEXT"/>
+        <div class="sec-label">Content</div>
+        <input type="text" id="text-input" placeholder="Type your text…" value="MY TEXT"/>
       </div>
       <div class="section">
-        <div class="section-label">Style</div>
-        <div class="control-row">
-          <label>Color</label>
-          <input type="color" id="text-color" value="#111111"/>
-        </div>
-        <div class="control-row">
-          <label>Font</label>
-          <select id="text-font">
-            <option value="DM Mono">DM Mono</option>
-            <option value="Syne">Syne</option>
+        <div class="sec-label">Style</div>
+        <div class="ctrl-row"><span class="ctrl-label">Color</span><input type="color" id="txt-color" value="#111111"/></div>
+        <div class="ctrl-row">
+          <span class="ctrl-label">Font</span>
+          <select id="txt-font">
+            <option value="Inter">Inter</option>
             <option value="Impact">Impact</option>
             <option value="Georgia">Georgia</option>
             <option value="Arial">Arial</option>
             <option value="Courier New">Courier New</option>
-            <option value="serif">Serif</option>
+            <option value="Verdana">Verdana</option>
           </select>
         </div>
-        <div class="control-row">
-          <label>Size</label>
-          <input type="range" id="text-size" min="12" max="220" value="80"/>
-          <span class="range-val" id="text-size-val">80px</span>
-        </div>
-        <div class="control-row">
-          <label>Opacity</label>
-          <input type="range" id="text-opacity" min="0" max="100" value="100"/>
-          <span class="range-val" id="text-opacity-val">100%</span>
-        </div>
+        <div class="ctrl-row"><span class="ctrl-label">Size</span><input type="range" id="txt-size" min="14" max="220" value="80"/><span class="ctrl-val" id="txt-size-v">80px</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Opacity</span><input type="range" id="txt-op" min="0" max="100" value="100"/><span class="ctrl-val" id="txt-op-v">100%</span></div>
       </div>
       <div class="section">
-        <div class="section-label">Position &amp; Transform</div>
-        <div class="control-row">
-          <label>X</label>
-          <input type="range" id="text-x" min="0" max="100" value="50"/>
-          <span class="range-val" id="text-x-val">50%</span>
-        </div>
-        <div class="control-row">
-          <label>Y</label>
-          <input type="range" id="text-y" min="0" max="100" value="50"/>
-          <span class="range-val" id="text-y-val">50%</span>
-        </div>
-        <div class="control-row">
-          <label>Rotate</label>
-          <input type="range" id="text-rotate" min="-180" max="180" value="0"/>
-          <span class="range-val" id="text-rotate-val">0°</span>
-        </div>
+        <div class="sec-label">Position</div>
+        <div class="ctrl-row"><span class="ctrl-label">X</span><input type="range" id="txt-x" min="0" max="100" value="50"/><span class="ctrl-val" id="txt-x-v">50%</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Y</span><input type="range" id="txt-y" min="0" max="100" value="50"/><span class="ctrl-val" id="txt-y-v">50%</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Rotate</span><input type="range" id="txt-rot" min="-180" max="180" value="0"/><span class="ctrl-val" id="txt-rot-v">0°</span></div>
       </div>
-      <button class="btn primary" id="btn-add-text">+ Add Text to Model</button>
-      <div id="text-edit-section" style="display:none;flex-direction:column;gap:8px">
-        <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)">Editing Active Text Layer</div>
-        <button class="btn" id="btn-update-text">↻ Apply Changes to Text</button>
+      <button class="btn primary" id="btn-add-txt">+ Add Text</button>
+      <div id="txt-edit-hint" style="display:none;margin-top:10px">
+        <div style="font-size:10px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Editing active text</div>
+        <button class="btn" id="btn-update-txt">↻ Apply Changes</button>
       </div>
     </div>
 
-    <!-- DRAW TAB -->
+    <!-- ─── DRAW ─── -->
     <div class="tab-panel" id="tab-draw">
       <div class="section">
-        <div class="section-label">Mode</div>
-        <button class="btn" id="btn-draw-toggle">✏ Enable Drawing</button>
-        <p style="font-size:10px;color:var(--muted);line-height:1.7">
-          Enable draw mode, then paint on the 3D model surface. Strokes follow UV coordinates via raycasting — they map accurately to the texture.
+        <div class="sec-label">Mode</div>
+        <button class="btn" id="btn-draw-toggle">✏️ Enable Draw Mode</button>
+        <p style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.7">
+          Enable then paint on the model with your finger. Strokes are mapped to the texture surface via UV raycasting.
         </p>
       </div>
       <div class="section">
-        <div class="section-label">Brush</div>
-        <div class="control-row">
-          <label>Color</label>
-          <input type="color" id="brush-color" value="#ff5c3a"/>
-        </div>
-        <div class="control-row">
-          <label>Size</label>
-          <input type="range" id="brush-size" min="1" max="80" value="14"/>
-          <span class="range-val" id="brush-size-val">14px</span>
-        </div>
-        <div class="control-row">
-          <label>Opacity</label>
-          <input type="range" id="brush-opacity" min="5" max="100" value="90"/>
-          <span class="range-val" id="brush-opacity-val">90%</span>
-        </div>
-        <div class="brush-preview">
-          <div class="brush-circle" id="brush-preview-dot" style="width:14px;height:14px;background:#ff5c3a"></div>
-        </div>
+        <div class="sec-label">Brush</div>
+        <div class="ctrl-row"><span class="ctrl-label">Color</span><input type="color" id="brush-color" value="#6c63ff"/></div>
+        <div class="ctrl-row"><span class="ctrl-label">Size</span><input type="range" id="brush-size" min="2" max="80" value="16"/><span class="ctrl-val" id="brush-size-v">16px</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Opacity</span><input type="range" id="brush-op" min="5" max="100" value="90"/><span class="ctrl-val" id="brush-op-v">90%</span></div>
+        <div class="brush-preview"><div class="brush-dot" id="brush-dot" style="width:16px;height:16px"></div></div>
       </div>
       <div class="section">
-        <div class="section-label">Undo</div>
-        <button class="btn danger" id="btn-undo-stroke">↩ Undo Last Stroke</button>
+        <div class="sec-label">Actions</div>
+        <button class="btn danger" id="btn-undo">↩ Undo Last Stroke</button>
       </div>
     </div>
 
-    <!-- LAYERS TAB -->
+    <!-- ─── LAYERS ─── -->
     <div class="tab-panel" id="tab-layers">
       <div class="section">
-        <div class="section-label">Layer Stack</div>
+        <div class="sec-label">Stack</div>
         <div class="layer-list" id="layer-list">
-          <p style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0">
-            No layers yet.<br/>Add images, text, or draw.
-          </p>
+          <p style="font-size:12px;color:var(--text3);text-align:center;padding:24px 0">No layers yet</p>
         </div>
       </div>
 
-      <!-- Transform panel for selected layer -->
-      <div id="transform-panel">
-        <div class="tp-label">Selected Layer Transform</div>
-        <div class="control-row">
-          <label>X</label>
-          <input type="range" id="sel-x" min="0" max="100" value="50"/>
-          <span class="range-val" id="sel-x-val">50%</span>
-        </div>
-        <div class="control-row">
-          <label>Y</label>
-          <input type="range" id="sel-y" min="0" max="100" value="50"/>
-          <span class="range-val" id="sel-y-val">50%</span>
-        </div>
-        <div class="control-row">
-          <label>Scale</label>
-          <input type="range" id="sel-scale" min="5" max="200" value="40"/>
-          <span class="range-val" id="sel-scale-val">40%</span>
-        </div>
-        <div class="control-row">
-          <label>Rotate</label>
-          <input type="range" id="sel-rotate" min="-180" max="180" value="0"/>
-          <span class="range-val" id="sel-rotate-val">0°</span>
-        </div>
-        <div class="control-row">
-          <label>Opacity</label>
-          <input type="range" id="sel-opacity" min="0" max="100" value="100"/>
-          <span class="range-val" id="sel-opacity-val">100%</span>
-        </div>
-        <button class="btn danger" id="btn-del-selected">✕ Delete Selected Layer</button>
+      <!-- Transform panel (selected) -->
+      <div id="xform-panel">
+        <div class="xf-title">Selected Layer</div>
+        <div class="ctrl-row"><span class="ctrl-label">X</span><input type="range" id="sel-x" min="0" max="100" value="50"/><span class="ctrl-val" id="sel-x-v">50%</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Y</span><input type="range" id="sel-y" min="0" max="100" value="50"/><span class="ctrl-val" id="sel-y-v">50%</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Scale</span><input type="range" id="sel-s" min="5" max="200" value="40"/><span class="ctrl-val" id="sel-s-v">40%</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Rotate</span><input type="range" id="sel-r" min="-180" max="180" value="0"/><span class="ctrl-val" id="sel-r-v">0°</span></div>
+        <div class="ctrl-row"><span class="ctrl-label">Opacity</span><input type="range" id="sel-o" min="0" max="100" value="100"/><span class="ctrl-val" id="sel-o-v">100%</span></div>
+        <button class="btn danger" id="btn-del-sel">✕ Delete Layer</button>
       </div>
 
       <div class="section">
-        <button class="btn danger" id="btn-clear-layers">✕ Delete All Layers</button>
+        <button class="btn danger" id="btn-clear-layers">🗑 Clear All Layers</button>
       </div>
     </div>
 
   </div><!-- /panels-wrap -->
 
-  <div class="sb-footer">
-    <span style="font-size:10px;color:var(--muted)">Texture Canvas</span>
-    <span style="font-size:10px;color:var(--muted)">1024 × 1024 px</span>
-  </div>
 </aside>
 
+<!-- Mobile bottom toolbar -->
+<div id="mobile-bottom">
+  <button class="mob-btn active" data-tab="color"><span class="ti">🎨</span>Color</button>
+  <button class="mob-btn" data-tab="image"><span class="ti">🖼</span>Image</button>
+  <button class="mob-btn" data-tab="text"><span class="ti">✍️</span>Text</button>
+  <button class="mob-btn" data-tab="draw"><span class="ti">✏️</span>Draw</button>
+  <button class="mob-btn" data-tab="layers"><span class="ti">📚</span>Layers</button>
 </div>
+
+</div><!-- /app -->
 <div id="toast"></div>
 
+<!-- ════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════ -->
 <script>
 'use strict';
 
-/* ═══════════════════════════════════════════════════════════════════
-   §1  CANVAS TEXTURE SYSTEM
-   ───────────────────────────────────────────────────────────────────
-   A 1024×1024 canvas is the live writable texture applied to the
-   3D model.  All customisation tools draw here; Three.js re-uploads
-   it every time needsUpdate is set.
+/* ══════════════════════════════════════════════════════════════
+   §0  MOBILE DETECTION & LAYOUT
+══════════════════════════════════════════════════════════════ */
+const isMobile = () => window.innerWidth <= 700 || ('ontouchstart' in window);
 
-   UV ORIENTATION NOTE
-   ───────────────────
-   GLBs exported from Blender store UV V=0 at the BOTTOM of the
-   texture, which is opposite to HTML canvas Y=0 at the TOP.
+function applyLayout() {
+  if (isMobile()) {
+    document.body.classList.add('mobile-layout');
+  } else {
+    document.body.classList.remove('mobile-layout');
+  }
+  setTimeout(onResize, 50);
+}
+applyLayout();
+window.addEventListener('resize', applyLayout);
 
-   We set  canvasTexture.flipY = false  so Three.js does NOT flip
-   the texture.  This means canvas Y=0 ↔ UV V=0 (model bottom).
 
-   Consequence for drawing:  when we get a UV from raycasting
-   we convert to canvas coords as:
-       canvasX = u  * CS
-       canvasY = (1 - v) * CS          ← flips V into canvas space
+/* ══════════════════════════════════════════════════════════════
+   §1  THEME SYSTEM
+══════════════════════════════════════════════════════════════ */
+let isDark = true;
+document.getElementById('theme-toggle').onclick = () => {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  document.getElementById('theme-toggle').querySelector('.ti').textContent = isDark ? '🌙' : '☀️';
+  showToast(isDark ? 'Dark mode' : 'Light mode');
+};
 
-   Consequence for placing images / text:  we store layer position
-   as normalised [0..1] values (origin = top-left of canvas).
-   The model's "front-centre" is typically u=0.5, v=0.5, which in
-   canvas space is x=0.5*CS, y=0.5*CS  — so layers default to (0.5, 0.5).
-   ═══════════════════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════════════
+   §2  CANVAS TEXTURE SYSTEM
+   ──────────────────────────────────────────────────────────────
+   The texture canvas is 1024×1024.  All customisations paint here.
+
+   UV COORDINATE CONVENTION (critical):
+   ─────────────────────────────────────
+   Three.js CanvasTexture with flipY = false means:
+     UV (0,0) → canvas (0,0) = top-left
+     UV (1,1) → canvas (CS,CS) = bottom-right
+   BUT OpenGL UV convention has V=0 at bottom.
+
+   When we raycast we get UV.v in [0..1] where 0=bottom.
+   So canvas Y = (1 - uv.v) * CS   ← flip V
+   And canvas X = uv.u * CS
+
+   This is the ONE formula used everywhere (drawing, hit-test, etc).
+══════════════════════════════════════════════════════════════ */
 
 const CS = 1024;
-
 const texCanvas = document.createElement('canvas');
 texCanvas.width = texCanvas.height = CS;
 const ctx = texCanvas.getContext('2d');
 
-let canvasTexture = null;   // assigned after Three.js scene is ready
+let canvasTexture = null;   // set after Three.js is ready
 
-// App state
 let baseColor   = '#f5f0e8';
-let layers      = [];       // [{id,type,x,y,scale,rotate,opacity,...}]
-let drawStrokes = [];       // finalized stroke objects
+let layers      = [];
+let drawStrokes = [];
 let selectedId  = null;
 let nextId      = 1;
 
-/* Full redraw from state */
-function redrawCanvas() {
-  // 1. Background fill
+function redraw() {
+  // 1. Background
   ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, CS, CS);
 
-  // 2. All layers bottom → top
-  layers.forEach(l => paintLayer(l));
+  // 2. Layers
+  layers.forEach(paintLayer);
 
-  // 3. Draw strokes
-  drawStrokes.forEach(s => paintStroke(s));
+  // 3. Strokes
+  drawStrokes.forEach(paintStroke);
 
-  // 4. Selection highlight
+  // 4. Selection gizmo
   if (selectedId !== null) {
     const sel = layers.find(l => l.id === selectedId);
-    if (sel) paintSelectionBox(sel);
+    if (sel) paintGizmo(sel);
   }
 
   if (canvasTexture) canvasTexture.needsUpdate = true;
 }
 
-/* Paint a single layer */
-function paintLayer(layer) {
+function paintLayer(L) {
   ctx.save();
-  ctx.translate(layer.x * CS, layer.y * CS);
-  ctx.rotate((layer.rotate || 0) * Math.PI / 180);
-  ctx.globalAlpha = layer.opacity ?? 1;
+  ctx.translate(L.x * CS, L.y * CS);
+  ctx.rotate((L.rotate || 0) * Math.PI / 180);
+  ctx.globalAlpha = L.opacity ?? 1;
 
-  if (layer.type === 'image' && layer.imageEl) {
-    const sw = CS * (layer.scale / 100);
-    const sh = (layer.imageEl.naturalHeight / layer.imageEl.naturalWidth) * sw;
-    ctx.drawImage(layer.imageEl, -sw / 2, -sh / 2, sw, sh);
+  if (L.type === 'image' && L.imageEl) {
+    const sw = CS * (L.scale / 100);
+    const sh = (L.imageEl.naturalHeight / L.imageEl.naturalWidth) * sw;
+    ctx.drawImage(L.imageEl, -sw / 2, -sh / 2, sw, sh);
   }
-
-  if (layer.type === 'text') {
-    ctx.font           = `bold ${layer.size}px "${layer.font}"`;
-    ctx.fillStyle      = layer.color;
-    ctx.textAlign      = 'center';
-    ctx.textBaseline   = 'middle';
-    ctx.fillText(layer.text, 0, 0);
+  if (L.type === 'text') {
+    ctx.font         = `bold ${L.size}px "${L.font}"`;
+    ctx.fillStyle    = L.color;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(L.text, 0, 0);
   }
-
   ctx.restore();
 }
 
-/* Yellow dashed bounding box + corner dots */
-function paintSelectionBox(layer) {
+function paintStroke(s) {
+  if (!s.points || s.points.length < 2) return;
   ctx.save();
-  ctx.translate(layer.x * CS, layer.y * CS);
-  ctx.rotate((layer.rotate || 0) * Math.PI / 180);
-
-  let w, h;
-  if (layer.type === 'image' && layer.imageEl) {
-    w = CS * (layer.scale / 100);
-    h = (layer.imageEl.naturalHeight / layer.imageEl.naturalWidth) * w;
-  } else if (layer.type === 'text') {
-    ctx.font = `bold ${layer.size}px "${layer.font}"`;
-    w = ctx.measureText(layer.text).width + 24;
-    h = layer.size + 16;
-  } else {
-    w = h = 80;
-  }
-
-  ctx.strokeStyle = '#e8ff47';
-  ctx.lineWidth   = 2.5;
-  ctx.setLineDash([8, 5]);
-  ctx.globalAlpha = 0.92;
-  ctx.strokeRect(-w / 2, -h / 2, w, h);
-
-  ctx.setLineDash([]);
-  ctx.fillStyle = '#e8ff47';
-  [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].forEach(([hx, hy]) => {
-    ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fill();
-  });
-  ctx.restore();
-}
-
-/* Paint one stroke */
-function paintStroke(stroke) {
-  if (!stroke.points || stroke.points.length < 2) return;
-  ctx.save();
-  ctx.strokeStyle = stroke.color;
-  ctx.lineWidth   = stroke.size;
-  ctx.globalAlpha = stroke.opacity;
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth   = s.size;
+  ctx.globalAlpha = s.opacity;
   ctx.lineCap = ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-  for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+  ctx.moveTo(s.points[0].x, s.points[0].y);
+  for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
   ctx.stroke();
+  ctx.restore();
+}
+
+function paintGizmo(L) {
+  ctx.save();
+  ctx.translate(L.x * CS, L.y * CS);
+  ctx.rotate((L.rotate || 0) * Math.PI / 180);
+
+  let w, h;
+  if (L.type === 'image' && L.imageEl) {
+    w = CS * (L.scale / 100);
+    h = (L.imageEl.naturalHeight / L.imageEl.naturalWidth) * w;
+  } else if (L.type === 'text') {
+    ctx.font = `bold ${L.size}px "${L.font}"`;
+    w = ctx.measureText(L.text).width + 28;
+    h = L.size + 20;
+  } else { w = h = 80; }
+
+  ctx.strokeStyle = '#6c63ff';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 6]);
+  ctx.globalAlpha = .9;
+  ctx.strokeRect(-w/2, -h/2, w, h);
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#6c63ff';
+  [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].forEach(([hx,hy]) => {
+    ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
+  });
+  // Rotation handle at top
+  ctx.beginPath(); ctx.arc(0, -h/2 - 20, 7, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, -h/2); ctx.lineTo(0, -h/2-20);
+  ctx.strokeStyle = '#6c63ff'; ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.stroke();
+
   ctx.restore();
 }
 
 function clearAll() {
   layers = []; drawStrokes = []; selectedId = null;
-  hideTransformPanel(); redrawCanvas(); refreshLayerList();
-  showToast('Canvas cleared');
+  hideXform(); redraw(); refreshLayers(); showToast('Cleared');
 }
 
-redrawCanvas(); // initial blank canvas
+redraw();
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §2  THREE.JS SCENE
-   ═══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   §3  THREE.JS SCENE — ROBUST LOADING
+══════════════════════════════════════════════════════════════ */
 
 const threeCanvas = document.getElementById('three-canvas');
-const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, alpha: true });
+
+// Renderer — alpha:true for transparent bg
+const renderer = new THREE.WebGLRenderer({
+  canvas: threeCanvas,
+  antialias: true,
+  alpha: true,
+  powerPreference: 'default'
+});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.outputEncoding = THREE.sRGBEncoding;
-renderer.toneMapping    = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+// r134 uses outputColorSpace instead of outputEncoding
+if (renderer.outputColorSpace !== undefined) {
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+} else {
+  renderer.outputEncoding = THREE.sRGBEncoding;   // r128 fallback
+}
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
 
-const scene  = new THREE.Scene();
+const scene = new THREE.Scene();
+
 const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
 camera.position.set(0, 0.5, 3);
 
 const orbitCtrl = new THREE.OrbitControls(camera, threeCanvas);
 orbitCtrl.enablePan    = false;
 orbitCtrl.enableDamping = true;
-orbitCtrl.dampingFactor = 0.07;
-orbitCtrl.minDistance  = 0.5;
-orbitCtrl.maxDistance  = 8;
+orbitCtrl.dampingFactor = 0.08;
+orbitCtrl.minDistance  = 0.3;
+orbitCtrl.maxDistance  = 10;
+orbitCtrl.rotateSpeed  = 0.8;
+orbitCtrl.zoomSpeed    = 1.2;
+orbitCtrl.touches = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_ROTATE
+};
 
 // Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-const kl = new THREE.DirectionalLight(0xfff5e0, 1.4);
-kl.position.set(2, 4, 3); kl.castShadow = true; scene.add(kl);
-const fl = new THREE.DirectionalLight(0xe0eeff, 0.6);
-fl.position.set(-3, 1, 1); scene.add(fl);
-const rl = new THREE.DirectionalLight(0xffffff, 0.4);
-rl.position.set(0, -2, -3); scene.add(rl);
-scene.add(new THREE.HemisphereLight(0x334466, 0x221100, 0.4));
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const kl = new THREE.DirectionalLight(0xfff8e7, 1.4);
+kl.position.set(3, 5, 4); kl.castShadow = true;
+kl.shadow.mapSize.set(512, 512); // lower for mobile perf
+scene.add(kl);
+scene.add(new THREE.DirectionalLight(0xd0e8ff, 0.5).position.set(-3, 1, 2) && kl); // reuse var trick - separate below
+const fl2 = new THREE.DirectionalLight(0xd0e8ff, 0.5); fl2.position.set(-3,1,2); scene.add(fl2);
+const rl2 = new THREE.DirectionalLight(0xffffff, 0.35); rl2.position.set(0,-2,-3); scene.add(rl2);
+scene.add(new THREE.HemisphereLight(0x4466aa, 0x331100, 0.35));
 
-/* Canvas texture — flipY=false so canvas Y axis matches UV V axis behaviour
-   after we do the (1-v) flip in coordinate conversion. */
+// Canvas Texture
+// flipY = false: canvas top-left = UV (0,0); we correct V with (1-v) in UV→canvas conversion
 canvasTexture = new THREE.CanvasTexture(texCanvas);
-canvasTexture.flipY    = false;
-canvasTexture.encoding = THREE.sRGBEncoding;
+canvasTexture.flipY = false;
+// Encoding compat
+if (THREE.SRGBColorSpace !== undefined) {
+  canvasTexture.colorSpace = THREE.SRGBColorSpace;
+} else {
+  canvasTexture.encoding = THREE.sRGBEncoding;
+}
 
-let modelRoot   = null;
 let modelMeshes = [];
+let modelRoot   = null;
+let modelLoaded = false;
 
-const gltfLoader = new THREE.GLTFLoader();
-
-gltfLoader.load('model.glb',
-  gltf => {
-    modelRoot = gltf.scene;
-    const box = new THREE.Box3().setFromObject(modelRoot);
-    const sz  = box.getSize(new THREE.Vector3());
-    const ctr = box.getCenter(new THREE.Vector3());
-    const sc  = 2 / Math.max(sz.x, sz.y, sz.z);
-    modelRoot.scale.setScalar(sc);
-    modelRoot.position.sub(ctr.multiplyScalar(sc));
-
-    modelRoot.traverse(n => {
-      if (!n.isMesh) return;
-      n.castShadow = n.receiveShadow = true;
-      n.material = n.material.clone();
-      n.material.map = canvasTexture;
-      n.material.needsUpdate = true;
-      modelMeshes.push(n);
-    });
-
-    scene.add(modelRoot);
-    hideLoader(); showToast('Model loaded ✓');
-  },
-  xhr => { if (xhr.total) document.getElementById('loader-fill').style.width = (xhr.loaded/xhr.total*100)+'%'; },
-  err => {
-    console.warn('GLB not found — demo sphere', err);
-    const geo  = new THREE.SphereGeometry(1, 64, 64);
-    const mat  = new THREE.MeshStandardMaterial({ map: canvasTexture, roughness: 0.8 });
-    const mesh = new THREE.Mesh(geo, mat);
-    modelMeshes = [mesh];
-    modelRoot = new THREE.Group(); modelRoot.add(mesh); scene.add(modelRoot);
-    hideLoader(); showToast('Demo sphere — place model.glb next to this file');
-  }
-);
-
+// ── Loader UI helpers ──
+function ldText(t) { document.getElementById('ld-text').textContent = t; }
+function ldProgress(p) {
+  const bar = document.getElementById('ld-bar');
+  bar.style.display = 'block';
+  document.getElementById('ld-fill').style.width = p + '%';
+}
 function hideLoader() {
   const el = document.getElementById('loader');
-  el.classList.add('hidden'); setTimeout(() => el.remove(), 500);
+  el.classList.add('out');
+  setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 600);
 }
 
+// ── Load GLB ──
+ldText('Loading model…');
+
+// Test if model.glb exists first via a HEAD request
+fetch('model.glb', { method: 'HEAD' })
+  .then(r => {
+    if (!r.ok) throw new Error('not found');
+    loadGLB();
+  })
+  .catch(() => {
+    // No model.glb found — show sphere fallback immediately
+    loadFallbackSphere();
+  });
+
+function loadGLB() {
+  const loader = new THREE.GLTFLoader();
+  loader.load(
+    'model.glb',
+    gltf => {
+      modelRoot = gltf.scene;
+
+      // Centre & normalise scale
+      const box = new THREE.Box3().setFromObject(modelRoot);
+      const sz  = new THREE.Vector3(); box.getSize(sz);
+      const ctr = new THREE.Vector3(); box.getCenter(ctr);
+      const sc  = 1.8 / Math.max(sz.x, sz.y, sz.z);
+      modelRoot.scale.setScalar(sc);
+      // Move centre to origin
+      modelRoot.position.copy(ctr).multiplyScalar(-sc);
+
+      modelRoot.traverse(n => {
+        if (!n.isMesh) return;
+        n.castShadow = n.receiveShadow = true;
+        // Handle mesh arrays or single material
+        const applyMat = mat => {
+          const m = mat.clone();
+          m.map = canvasTexture;
+          m.needsUpdate = true;
+          return m;
+        };
+        if (Array.isArray(n.material)) {
+          n.material = n.material.map(applyMat);
+        } else {
+          n.material = applyMat(n.material);
+        }
+        modelMeshes.push(n);
+      });
+
+      scene.add(modelRoot);
+      modelLoaded = true;
+      hideLoader();
+      showToast('Model loaded ✓');
+    },
+    xhr => {
+      if (xhr.total > 0) {
+        const pct = Math.round(xhr.loaded / xhr.total * 100);
+        ldProgress(pct);
+        ldText(`Loading… ${pct}%`);
+      }
+    },
+    err => {
+      console.error('GLB load error:', err);
+      loadFallbackSphere();
+    }
+  );
+}
+
+function loadFallbackSphere() {
+  ldText('No model found — using demo');
+  const geo  = new THREE.SphereGeometry(1, 48, 48);
+  const mat  = new THREE.MeshStandardMaterial({ map: canvasTexture, roughness: 0.75, metalness: 0 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  modelMeshes = [mesh];
+  modelRoot = new THREE.Group(); modelRoot.add(mesh); scene.add(modelRoot);
+  modelLoaded = true;
+  hideLoader();
+  document.getElementById('no-model-hint').style.display = 'flex';
+  setTimeout(() => { document.getElementById('no-model-hint').style.display = 'none'; }, 4000);
+  showToast('Demo mode — place model.glb to use your model');
+}
+
+// ── Reset camera ──
+document.getElementById('btn-reset-cam').onclick = () => {
+  camera.position.set(0, 0.5, 3);
+  orbitCtrl.target.set(0, 0, 0);
+  orbitCtrl.update();
+};
+
+// ── Resize ──
 function onResize() {
   const vp = document.getElementById('viewport');
-  renderer.setSize(vp.clientWidth, vp.clientHeight);
-  camera.aspect = vp.clientWidth / vp.clientHeight;
+  if (!vp) return;
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
-window.addEventListener('resize', onResize); onResize();
+window.addEventListener('resize', onResize);
+onResize();
 
-(function loop() { requestAnimationFrame(loop); orbitCtrl.update(); renderer.render(scene, camera); })();
+// ── Render loop ──
+(function loop() {
+  requestAnimationFrame(loop);
+  orbitCtrl.update();
+  renderer.render(scene, camera);
+})();
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §3  MATERIAL CONTROLS
-   ═══════════════════════════════════════════════════════════════════ */
-
-function applyMaterial() {
+/* ══════════════════════════════════════════════════════════════
+   §4  MATERIAL CONTROLS
+══════════════════════════════════════════════════════════════ */
+function applyMat() {
   const r = document.getElementById('roughness').value / 100;
   const m = document.getElementById('metalness').value / 100;
-  modelMeshes.forEach(mesh => { mesh.material.roughness = r; mesh.material.metalness = m; mesh.material.needsUpdate = true; });
+  modelMeshes.forEach(mesh => {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach(mat => { mat.roughness = r; mat.metalness = m; mat.needsUpdate = true; });
+  });
 }
-setupRange('roughness','roughness-val', v => v.toFixed(2), applyMaterial);
-setupRange('metalness','metalness-val', v => v.toFixed(2), applyMaterial);
+rng('roughness','roughness-val', v=>v.toFixed(2), applyMat);
+rng('metalness','metalness-val', v=>v.toFixed(2), applyMat);
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §4  COLOR SYSTEM
-   ═══════════════════════════════════════════════════════════════════ */
-
-const PRESETS = [
-  '#ffffff','#f5f0e8','#ffd6c0','#ffadb0','#c8e6c9','#b3d9f7','#d1c4e9','#ffe082',
-  '#212121','#37474f','#455a64','#546e7a','#bf360c','#1565c0','#1b5e20','#4a148c',
-  '#ff6f00','#00796b','#880e4f','#263238','#f8bbd0','#dcedc8','#bbdefb','#fff9c4',
-  '#795548','#9e9e9e','#607d8b','#e91e63'
+/* ══════════════════════════════════════════════════════════════
+   §5  COLOR SYSTEM
+══════════════════════════════════════════════════════════════ */
+const COLORS = [
+  '#ffffff','#f5f0e8','#ffe0cc','#ffc0cb','#d4edda','#cce5ff','#e2d9f3','#fff3cd',
+  '#1a1a2e','#2c3e50','#34495e','#4a235a','#922b21','#1a5276','#145a32','#784212',
+  '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c','#e67e22','#e91e63',
+  '#795548','#607d8b','#ff5722','#00bcd4',
 ];
-
-const sgrid = document.getElementById('swatch-grid');
-PRESETS.forEach(hex => {
+const sg = document.getElementById('swatch-grid');
+COLORS.forEach(hex => {
   const b = document.createElement('button');
   b.className = 'swatch'; b.style.background = hex; b.title = hex;
   b.onclick = () => {
-    applyBase(hex);
+    setBase(hex);
     document.getElementById('base-color').value = hex;
-    document.getElementById('base-color-hex').textContent = hex;
-    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+    document.getElementById('base-hex').textContent = hex;
+    document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
     b.classList.add('selected');
   };
-  sgrid.appendChild(b);
+  sg.appendChild(b);
 });
 
-document.getElementById('base-color').addEventListener('input', function() {
-  document.getElementById('base-color-hex').textContent = this.value;
-  applyBase(this.value);
-  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
-});
+document.getElementById('base-color').oninput = function() {
+  document.getElementById('base-hex').textContent = this.value;
+  setBase(this.value);
+  document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
+};
 
-function applyBase(hex) { baseColor = hex; redrawCanvas(); }
+function setBase(hex) { baseColor = hex; redraw(); }
 document.getElementById('btn-clear-all').onclick = clearAll;
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §5  IMAGE UPLOAD & LIVE TRANSFORM
-   ═══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   §6  IMAGE UPLOAD
+══════════════════════════════════════════════════════════════ */
+let activeImg = null;
+const dz   = document.getElementById('dropzone');
+const imgF = document.getElementById('img-file');
 
-let activeImgLayer = null;
-
-const dropzone  = document.getElementById('dropzone');
-const imgUpload = document.getElementById('img-upload');
-dropzone.onclick = () => imgUpload.click();
-imgUpload.onchange = e => handleImg(e.target.files[0]);
-dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('drag-over'); };
-dropzone.ondragleave = () => dropzone.classList.remove('drag-over');
-dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('drag-over'); handleImg(e.dataTransfer.files[0]); };
+dz.onclick = () => imgF.click();
+imgF.onchange = e => handleImg(e.target.files[0]);
+dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
+dz.ondragleave = () => dz.classList.remove('over');
+dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); handleImg(e.dataTransfer.files[0]); };
 
 function handleImg(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const img = new Image();
   img.onload = () => {
-    const layer = { id:nextId++, type:'image', imageEl:img, x:0.5, y:0.5, scale:40, rotate:0, opacity:1 };
-    layers.push(layer);
-    activeImgLayer = layer; selectedId = layer.id;
-    document.getElementById('img-transform-section').style.display = 'flex';
-    syncImgSliders(layer);
-    redrawCanvas(); refreshLayerList();
-    showToast('Image added — use sliders or drag on model');
+    const L = { id:nextId++, type:'image', imageEl:img, x:.5, y:.5, scale:40, rotate:0, opacity:1 };
+    layers.push(L); activeImg = L; selectedId = L.id;
+    document.getElementById('img-xform').style.display = 'block';
+    syncImgSliders(L);
+    redraw(); refreshLayers();
+    showToast('Image added — drag or pinch on model');
   };
   img.src = URL.createObjectURL(file);
 }
 
-function syncImgSliders(l) {
-  setSliderVal('img-x',      'img-x-val',      Math.round(l.x*100),         v=>v+'%');
-  setSliderVal('img-y',      'img-y-val',       Math.round(l.y*100),         v=>v+'%');
-  setSliderVal('img-scale',  'img-scale-val',   l.scale,                     v=>v+'%');
-  setSliderVal('img-rotate', 'img-rotate-val',  l.rotate||0,                 v=>v+'°');
-  setSliderVal('img-opacity','img-opacity-val', Math.round((l.opacity??1)*100), v=>v+'%');
+function syncImgSliders(L) {
+  sv('img-x','img-x-v', Math.round(L.x*100),           v=>v+'%');
+  sv('img-y','img-y-v', Math.round(L.y*100),            v=>v+'%');
+  sv('img-s','img-s-v', L.scale,                        v=>v+'%');
+  sv('img-r','img-r-v', L.rotate||0,                   v=>v+'°');
+  sv('img-o','img-o-v', Math.round((L.opacity??1)*100), v=>v+'%');
 }
 
-// Wire image sliders → live update
-[
-  ['img-x',       'img-x-val',       'x',       v=>v+'%',  v=>v/100],
-  ['img-y',       'img-y-val',       'y',       v=>v+'%',  v=>v/100],
-  ['img-scale',   'img-scale-val',   'scale',   v=>v+'%',  v=>parseFloat(v)],
-  ['img-rotate',  'img-rotate-val',  'rotate',  v=>v+'°',  v=>parseFloat(v)],
-  ['img-opacity', 'img-opacity-val', 'opacity', v=>v+'%',  v=>v/100],
-].forEach(([id, vid, prop, fmt, xfm]) => {
-  document.getElementById(id).addEventListener('input', function() {
+[['img-x','img-x-v','x',v=>v+'%',v=>v/100],
+ ['img-y','img-y-v','y',v=>v+'%',v=>v/100],
+ ['img-s','img-s-v','scale',v=>v+'%',v=>parseFloat(v)],
+ ['img-r','img-r-v','rotate',v=>v+'°',v=>parseFloat(v)],
+ ['img-o','img-o-v','opacity',v=>v+'%',v=>v/100],
+].forEach(([id,vid,prop,fmt,xfm]) => {
+  document.getElementById(id).oninput = function() {
     document.getElementById(vid).textContent = fmt(this.value);
-    if (!activeImgLayer) return;
-    activeImgLayer[prop] = xfm(this.value);
-    selectedId = activeImgLayer.id;
-    redrawCanvas();
-  });
+    if (!activeImg) return;
+    activeImg[prop] = xfm(this.value);
+    selectedId = activeImg.id;
+    redraw();
+  };
 });
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §6  TEXT TOOL
-   ═══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   §7  TEXT TOOL
+══════════════════════════════════════════════════════════════ */
+let activeTxt = null;
 
-let activeTextLayer = null;
+rng('txt-size','txt-size-v', v=>v+'px');
+rng('txt-op','txt-op-v',     v=>v+'%');
+rng('txt-x','txt-x-v',       v=>v+'%');
+rng('txt-y','txt-y-v',       v=>v+'%');
+rng('txt-rot','txt-rot-v',   v=>v+'°');
 
-setupRange('text-size',   'text-size-val',    v => v+'px');
-setupRange('text-opacity','text-opacity-val', v => v+'%');
-setupRange('text-x',      'text-x-val',       v => v+'%');
-setupRange('text-y',      'text-y-val',       v => v+'%');
-setupRange('text-rotate', 'text-rotate-val',  v => v+'°');
-
-// Add text button
-document.getElementById('btn-add-text').onclick = () => {
+document.getElementById('btn-add-txt').onclick = () => {
   const txt = document.getElementById('text-input').value.trim();
   if (!txt) return showToast('Enter some text first');
-  const layer = {
-    id: nextId++, type:'text',
-    text:    txt,
-    color:   document.getElementById('text-color').value,
-    font:    document.getElementById('text-font').value,
-    size:    parseInt(document.getElementById('text-size').value),
-    opacity: document.getElementById('text-opacity').value / 100,
-    x:       document.getElementById('text-x').value / 100,
-    y:       document.getElementById('text-y').value / 100,
-    rotate:  parseFloat(document.getElementById('text-rotate').value),
-    scale:   40   // used only for selection box sizing
+  const L = {
+    id:nextId++, type:'text', text:txt,
+    color: document.getElementById('txt-color').value,
+    font:  document.getElementById('txt-font').value,
+    size:  parseInt(document.getElementById('txt-size').value),
+    opacity: document.getElementById('txt-op').value/100,
+    x: document.getElementById('txt-x').value/100,
+    y: document.getElementById('txt-y').value/100,
+    rotate: parseFloat(document.getElementById('txt-rot').value),
+    scale: 40
   };
-  layers.push(layer);
-  activeTextLayer = layer; selectedId = layer.id;
-  document.getElementById('text-edit-section').style.display = 'flex';
-  document.getElementById('text-edit-section').style.flexDirection = 'column';
-  document.getElementById('text-edit-section').style.gap = '8px';
-  redrawCanvas(); refreshLayerList();
-  showToast(`Text "${txt}" added — drag on model to move`);
+  layers.push(L); activeTxt = L; selectedId = L.id;
+  const hint = document.getElementById('txt-edit-hint');
+  hint.style.display = 'block';
+  redraw(); refreshLayers();
+  showToast(`Text added — drag on model`);
 };
 
-// Live preview while sliders move (if active text layer exists)
-['text-x','text-y','text-size','text-color','text-font','text-rotate','text-opacity'].forEach(id => {
-  document.getElementById(id).addEventListener('input', () => {
-    if (!activeTextLayer) return;
-    applyTextSliders(); redrawCanvas();
-  });
-});
-document.getElementById('text-input').addEventListener('input', () => {
-  if (!activeTextLayer) return;
-  applyTextSliders(); redrawCanvas();
+['txt-x','txt-y','txt-size','txt-color','txt-font','txt-rot','txt-op','text-input'].forEach(id => {
+  document.getElementById(id).oninput = () => { if (activeTxt) { applyTxtSliders(); redraw(); } };
 });
 
-function applyTextSliders() {
-  activeTextLayer.text    = document.getElementById('text-input').value || activeTextLayer.text;
-  activeTextLayer.color   = document.getElementById('text-color').value;
-  activeTextLayer.font    = document.getElementById('text-font').value;
-  activeTextLayer.size    = parseInt(document.getElementById('text-size').value);
-  activeTextLayer.opacity = document.getElementById('text-opacity').value / 100;
-  activeTextLayer.x       = document.getElementById('text-x').value / 100;
-  activeTextLayer.y       = document.getElementById('text-y').value / 100;
-  activeTextLayer.rotate  = parseFloat(document.getElementById('text-rotate').value);
-  selectedId = activeTextLayer.id;
+function applyTxtSliders() {
+  const txt = document.getElementById('text-input').value.trim();
+  activeTxt.text    = txt || activeTxt.text;
+  activeTxt.color   = document.getElementById('txt-color').value;
+  activeTxt.font    = document.getElementById('txt-font').value;
+  activeTxt.size    = parseInt(document.getElementById('txt-size').value);
+  activeTxt.opacity = document.getElementById('txt-op').value/100;
+  activeTxt.x       = document.getElementById('txt-x').value/100;
+  activeTxt.y       = document.getElementById('txt-y').value/100;
+  activeTxt.rotate  = parseFloat(document.getElementById('txt-rot').value);
+  selectedId = activeTxt.id;
 }
 
-document.getElementById('btn-update-text').onclick = () => {
-  if (!activeTextLayer) return;
-  applyTextSliders(); redrawCanvas(); refreshLayerList();
-  showToast('Text layer updated');
+document.getElementById('btn-update-txt').onclick = () => {
+  if (!activeTxt) return;
+  applyTxtSliders(); redraw(); refreshLayers(); showToast('Text updated');
 };
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §7  FREEHAND DRAW TOOL
-   ───────────────────────────────────────────────────────────────────
-   UV → Canvas coordinate conversion:
-     canvasX = u * CS
-     canvasY = (1 - v) * CS
+/* ══════════════════════════════════════════════════════════════
+   §8  DRAW TOOL + RAYCASTER
+   ──────────────────────────────────────────────────────────────
+   UV → Canvas pixel:
+     px = uv.x * CS
+     py = (1 - uv.y) * CS      ← flip V
 
-   This correctly flips the UV V axis into canvas Y axis because
-   canvas Y grows downward while UV V grows upward.
-   With flipY=false on the texture, this gives accurate placement.
-   ═══════════════════════════════════════════════════════════════════ */
+   This is the correct formula when flipY=false on the texture,
+   and matches standard OpenGL UV convention where V=0 is bottom.
+══════════════════════════════════════════════════════════════ */
 
-let drawMode    = false;
-let liveStroke  = null;
+let drawMode  = false;
+let liveStroke = null;
 
-const drawCursorEl = document.getElementById('draw-cursor');
-const modeBadge    = document.getElementById('mode-badge');
-const btnDrawTgl   = document.getElementById('btn-draw-toggle');
-
-btnDrawTgl.onclick = () => {
-  drawMode = !drawMode;
-  orbitCtrl.enabled = !drawMode;
-  selectedId = null;
-  btnDrawTgl.textContent = drawMode ? '✏ Disable Drawing' : '✏ Enable Drawing';
-  btnDrawTgl.classList.toggle('active-state', drawMode);
-  modeBadge.style.display = drawMode ? 'block' : 'none';
-  drawCursorEl.style.display = drawMode ? 'block' : 'none';
-  document.getElementById('hint').style.opacity = drawMode ? '0' : '1';
-  redrawCanvas();
-  showToast(drawMode ? 'Draw mode ON — paint directly on model' : 'Draw mode OFF');
-};
-
-// Brush UI sync
-document.getElementById('brush-size').addEventListener('input', function() {
-  const s = parseInt(this.value);
-  document.getElementById('brush-size-val').textContent = s + 'px';
-  drawCursorEl.style.width = drawCursorEl.style.height = s + 'px';
-  document.getElementById('brush-preview-dot').style.width  = Math.min(s,60)+'px';
-  document.getElementById('brush-preview-dot').style.height = Math.min(s,60)+'px';
-});
-document.getElementById('brush-opacity').addEventListener('input', function() {
-  document.getElementById('brush-opacity-val').textContent = this.value+'%';
-});
-document.getElementById('brush-color').addEventListener('input', function() {
-  document.getElementById('brush-preview-dot').style.background = this.value;
-  drawCursorEl.style.borderColor = this.value;
-});
-
-/* Raycaster */
 const raycaster = new THREE.Raycaster();
-const ndcPt     = new THREE.Vector2();
+const ndcV      = new THREE.Vector2();
 
-function uvAtPointer(e) {
+// Get canvas UV coordinates from a pointer/touch event
+function getUV(e) {
   const rect = threeCanvas.getBoundingClientRect();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  ndcPt.x =  ((cx - rect.left) / rect.width)  * 2 - 1;
-  ndcPt.y = -((cy - rect.top)  / rect.height) * 2 + 1;
-  raycaster.setFromCamera(ndcPt, camera);
-  const hits = raycaster.intersectObjects(modelMeshes, false);
-  if (hits.length && hits[0].uv) {
-    const uv = hits[0].uv;
-    return {
-      x: uv.x * CS,
-      y: (1 - uv.y) * CS    // ← correct: flip V into canvas Y
-    };
-  }
-  return null;
-}
-
-/* Update draw cursor visual position */
-function moveCursor(e) {
-  const rect = threeCanvas.getBoundingClientRect();
-  const cx = e.touches ? e.touches[0].clientX : e.clientX;
-  const cy = e.touches ? e.touches[0].clientY : e.clientY;
-  drawCursorEl.style.left = (cx - rect.left) + 'px';
-  drawCursorEl.style.top  = (cy - rect.top)  + 'px';
-}
-
-/* ── pointer events ── */
-function onDown(e) {
-  if (!drawMode) return;
-  e.preventDefault();
-  const pt = uvAtPointer(e);
-  if (!pt) return;
-  liveStroke = {
-    color:   document.getElementById('brush-color').value,
-    size:    parseInt(document.getElementById('brush-size').value),
-    opacity: document.getElementById('brush-opacity').value / 100,
-    points:  [pt]
+  const src  = e.touches ? e.touches[0] : e;
+  ndcV.x =  ((src.clientX - rect.left) / rect.width)  * 2 - 1;
+  ndcV.y = -((src.clientY - rect.top)  / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndcV, camera);
+  const hits = raycaster.intersectObjects(modelMeshes, true);
+  if (!hits.length || !hits[0].uv) return null;
+  return {
+    x:  hits[0].uv.x * CS,
+    y: (1 - hits[0].uv.y) * CS   // ← CORRECT flip
   };
 }
 
-function onMove(e) {
-  moveCursor(e);
-  if (!drawMode || !liveStroke) return;
-  e.preventDefault();
-  const pt = uvAtPointer(e);
-  if (!pt) return;
-  liveStroke.points.push(pt);
-  // Draw segment incrementally for smooth feedback
-  const pts = liveStroke.points;
-  if (pts.length >= 2) {
-    const a = pts[pts.length-2], b = pts[pts.length-1];
-    ctx.save();
-    ctx.strokeStyle = liveStroke.color;
-    ctx.lineWidth   = liveStroke.size;
-    ctx.globalAlpha = liveStroke.opacity;
-    ctx.lineCap = ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-    ctx.restore();
-    canvasTexture.needsUpdate = true;
-  }
+// Draw cursor visual
+const drawCursorEl = document.getElementById('draw-cursor');
+function moveCursorEl(e) {
+  const rect = threeCanvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  drawCursorEl.style.left = (src.clientX - rect.left) + 'px';
+  drawCursorEl.style.top  = (src.clientY - rect.top)  + 'px';
 }
 
-function onUp() {
-  if (!liveStroke) return;
-  if (liveStroke.points.length > 1) { drawStrokes.push(liveStroke); refreshLayerList(); }
-  liveStroke = null;
+// Toggle draw mode
+function setDrawMode(on) {
+  drawMode = on;
+  orbitCtrl.enabled = !on;
+  document.getElementById('btn-draw-toggle').className = 'btn' + (on ? ' draw-on' : '');
+  document.getElementById('btn-draw-toggle').textContent = on ? '⏹ Disable Draw Mode' : '✏️ Enable Draw Mode';
+  document.getElementById('btn-draw-vp').classList.toggle('active', on);
+  document.getElementById('mode-badge').style.display = on ? 'block' : 'none';
+  drawCursorEl.style.display = on ? 'block' : 'none';
+  document.getElementById('hint') && (document.getElementById('hint').style.opacity = on ? '0' : '1');
+  if (!on) selectedId = null;
+  redraw();
 }
 
-threeCanvas.addEventListener('mousedown',  onDown);
-threeCanvas.addEventListener('mousemove',  onMove);
-threeCanvas.addEventListener('mouseup',    onUp);
-threeCanvas.addEventListener('mouseleave', onUp);
-threeCanvas.addEventListener('touchstart', onDown, { passive:false });
-threeCanvas.addEventListener('touchmove',  onMove, { passive:false });
-threeCanvas.addEventListener('touchend',   onUp);
+document.getElementById('btn-draw-toggle').onclick = () => setDrawMode(!drawMode);
+document.getElementById('btn-draw-vp').onclick      = () => setDrawMode(!drawMode);
 
-document.getElementById('btn-undo-stroke').onclick = () => {
+// Brush UI
+document.getElementById('brush-size').oninput = function() {
+  const s = parseInt(this.value);
+  document.getElementById('brush-size-v').textContent = s + 'px';
+  const d = Math.min(s, 60);
+  document.getElementById('brush-dot').style.width = d + 'px';
+  document.getElementById('brush-dot').style.height = d + 'px';
+  drawCursorEl.style.width  = s + 'px';
+  drawCursorEl.style.height = s + 'px';
+};
+document.getElementById('brush-op').oninput = function() {
+  document.getElementById('brush-op-v').textContent = this.value + '%';
+};
+document.getElementById('brush-color').oninput = function() {
+  document.getElementById('brush-dot').style.background = this.value;
+  drawCursorEl.style.borderColor = this.value;
+};
+
+// Init brush dot
+document.getElementById('brush-dot').style.background = '#6c63ff';
+drawCursorEl.style.borderColor = '#6c63ff';
+const initBrushPx = parseInt(document.getElementById('brush-size').value);
+drawCursorEl.style.width = drawCursorEl.style.height = initBrushPx + 'px';
+
+document.getElementById('btn-undo').onclick = () => {
   if (!drawStrokes.length) return showToast('Nothing to undo');
-  drawStrokes.pop(); redrawCanvas(); refreshLayerList(); showToast('Stroke undone');
+  drawStrokes.pop(); redraw(); refreshLayers(); showToast('Stroke removed');
 };
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §8  VIEWPORT DRAG TO MOVE LAYERS
-   ───────────────────────────────────────────────────────────────────
-   When NOT in draw mode, clicking near a layer centre UV selects it.
-   Dragging then moves it in real-time using UV delta.
-   ═══════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════
+   §9  POINTER / TOUCH UNIFIED INPUT HANDLER
+   ──────────────────────────────────────────────────────────────
+   Handles three mutually exclusive modes:
+   A) DRAW MODE  — single touch/mouse = paint stroke
+   B) LAYER DRAG — single touch/mouse near a layer = drag layer
+   C) LAYER PINCH — two-finger gesture = scale + rotate layer
+   D) ORBIT — default, falls through to OrbitControls
+══════════════════════════════════════════════════════════════ */
 
-let isDragging = false, dragLayer = null;
+let pointerMode = 'none';   // 'draw' | 'drag' | 'pinch' | 'none'
+let dragLayer   = null;
 let dragStartUV = null, dragStartPos = null;
+let pinchLayer  = null, pinchStart = null;
 
-function trySelectLayer(e) {
-  if (drawMode) return false;
-  const uv = uvAtPointer(e);
-  if (!uv) return false;
-  const nu = uv.x / CS, nv = uv.y / CS;
+// Pinch data: { cx,cy, dist, angle, layerStartScale, layerStartRotate }
 
-  // Find closest layer centre within threshold
-  let best = null, bestD = 0.13;
-  layers.forEach(l => {
-    const d = Math.hypot(l.x - nu, l.y - nv);
-    if (d < bestD) { bestD = d; best = l; }
+// ── Helpers ──
+function uvToNorm(uv) { return { x: uv.x / CS, y: uv.y / CS }; }
+
+function nearestLayer(normX, normY) {
+  let best = null, bestD = 0.18;
+  layers.forEach(L => {
+    const d = Math.hypot(L.x - normX, L.y - normY);
+    if (d < bestD) { bestD = d; best = L; }
   });
-
-  if (best) {
-    selectedId = best.id;
-    isDragging = true; dragLayer = best;
-    dragStartUV  = { x: nu, y: nv };
-    dragStartPos = { x: best.x, y: best.y };
-    orbitCtrl.enabled = false;
-    syncTransformPanel(best); redrawCanvas(); refreshLayerList();
-    return true;
-  }
-
-  // Click on empty area — deselect
-  if (selectedId !== null) { selectedId = null; redrawCanvas(); refreshLayerList(); }
-  return false;
+  return best;
 }
 
-threeCanvas.addEventListener('mousedown', e => {
-  if (trySelectLayer(e)) e.preventDefault();
-});
-threeCanvas.addEventListener('mousemove', e => {
-  if (!isDragging || !dragLayer) return;
-  const uv = uvAtPointer(e);
-  if (!uv) return;
-  const nu = uv.x / CS, nv = uv.y / CS;
-  dragLayer.x = Math.max(0.02, Math.min(0.98, dragStartPos.x + (nu - dragStartUV.x)));
-  dragLayer.y = Math.max(0.02, Math.min(0.98, dragStartPos.y + (nv - dragStartUV.y)));
-  syncTransformPanel(dragLayer);
-  // Mirror to tab sliders if relevant
-  if (dragLayer.type==='image' && dragLayer===activeImgLayer) syncImgSliders(dragLayer);
-  redrawCanvas();
-  e.preventDefault();
-});
-threeCanvas.addEventListener('mouseup', () => {
-  isDragging = false; dragLayer = null;
-  orbitCtrl.enabled = true; refreshLayerList();
-});
-threeCanvas.addEventListener('mouseleave', () => {
-  isDragging = false; dragLayer = null; orbitCtrl.enabled = true;
-});
+function getPinchInfo(touches) {
+  const a = touches[0], b = touches[1];
+  const cx = (a.clientX + b.clientX) / 2;
+  const cy = (a.clientY + b.clientY) / 2;
+  const dist  = Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY);
+  const angle = Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX) * 180 / Math.PI;
+  return { cx, cy, dist, angle };
+}
 
-// Touch drag
-let touchDrag = false;
-threeCanvas.addEventListener('touchstart', e => {
-  if (drawMode) return;
-  if (trySelectLayer(e)) { touchDrag = true; }
-}, { passive: true });
-threeCanvas.addEventListener('touchmove', e => {
-  if (!touchDrag || !dragLayer) return;
-  const uv = uvAtPointer(e);
-  if (!uv) return;
-  const nu = uv.x/CS, nv = uv.y/CS;
-  dragLayer.x = Math.max(0.02, Math.min(0.98, dragStartPos.x + (nu - dragStartUV.x)));
-  dragLayer.y = Math.max(0.02, Math.min(0.98, dragStartPos.y + (nv - dragStartUV.y)));
-  syncTransformPanel(dragLayer);
-  if (dragLayer.type==='image' && dragLayer===activeImgLayer) syncImgSliders(dragLayer);
-  redrawCanvas();
-}, { passive: true });
-threeCanvas.addEventListener('touchend', () => {
-  touchDrag = false; isDragging = false; dragLayer = null;
-  orbitCtrl.enabled = !drawMode; refreshLayerList();
-});
+// ── MOUSEDOWN / TOUCHSTART ──
+function onStart(e) {
+  const touches = e.touches;
+  const nTouches = touches ? touches.length : 1;
+
+  // ── Two-finger pinch to transform active layer ──
+  if (nTouches === 2 && selectedId !== null) {
+    const L = layers.find(l => l.id === selectedId);
+    if (L) {
+      pointerMode = 'pinch';
+      pinchLayer  = L;
+      pinchStart  = getPinchInfo(touches);
+      pinchStart.layerScale  = L.scale;
+      pinchStart.layerRotate = L.rotate || 0;
+      orbitCtrl.enabled = false;
+      e.preventDefault();
+      return;
+    }
+  }
+
+  // ── Single pointer ──
+  if (drawMode) {
+    // DRAW
+    pointerMode = 'draw';
+    const uv = getUV(e);
+    if (!uv) return;
+    liveStroke = {
+      color:   document.getElementById('brush-color').value,
+      size:    parseInt(document.getElementById('brush-size').value),
+      opacity: document.getElementById('brush-op').value / 100,
+      points:  [uv]
+    };
+    e.preventDefault();
+    return;
+  }
+
+  // TRY DRAG
+  const uv = getUV(e);
+  if (uv) {
+    const n = uvToNorm(uv);
+    const found = nearestLayer(n.x, n.y);
+    if (found) {
+      pointerMode   = 'drag';
+      dragLayer     = found;
+      dragStartUV   = { ...n };
+      dragStartPos  = { x: found.x, y: found.y };
+      selectedId    = found.id;
+      orbitCtrl.enabled = false;
+      syncXformPanel(found);
+      redraw(); refreshLayers();
+      e.preventDefault();
+      return;
+    }
+  }
+
+  // Clicked empty area — deselect
+  if (selectedId !== null) { selectedId = null; redraw(); refreshLayers(); }
+  pointerMode = 'orbit';
+}
+
+// ── MOUSEMOVE / TOUCHMOVE ──
+function onMove(e) {
+  // Always update cursor visual in draw mode
+  if (drawMode) moveCursorEl(e);
+
+  if (pointerMode === 'draw') {
+    e.preventDefault();
+    const uv = getUV(e);
+    if (!uv || !liveStroke) return;
+    liveStroke.points.push(uv);
+    const pts = liveStroke.points;
+    if (pts.length >= 2) {
+      const a = pts[pts.length-2], b = pts[pts.length-1];
+      ctx.save();
+      ctx.strokeStyle = liveStroke.color;
+      ctx.lineWidth   = liveStroke.size;
+      ctx.globalAlpha = liveStroke.opacity;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+      ctx.restore();
+      canvasTexture.needsUpdate = true;
+    }
+    return;
+  }
+
+  if (pointerMode === 'drag' && dragLayer) {
+    e.preventDefault();
+    const uv = getUV(e);
+    if (!uv) return;
+    const n = uvToNorm(uv);
+    dragLayer.x = Math.max(.01, Math.min(.99, dragStartPos.x + (n.x - dragStartUV.x)));
+    dragLayer.y = Math.max(.01, Math.min(.99, dragStartPos.y + (n.y - dragStartUV.y)));
+    syncXformPanel(dragLayer);
+    if (dragLayer === activeImg) syncImgSliders(dragLayer);
+    redraw();
+    return;
+  }
+
+  if (pointerMode === 'pinch' && pinchLayer && e.touches && e.touches.length === 2) {
+    e.preventDefault();
+    const now = getPinchInfo(e.touches);
+    const scaleFactor  = now.dist / pinchStart.dist;
+    const rotateDelta  = now.angle - pinchStart.angle;
+    pinchLayer.scale  = Math.max(5, Math.min(200, pinchStart.layerScale  * scaleFactor));
+    pinchLayer.rotate = pinchStart.layerRotate + rotateDelta;
+    syncXformPanel(pinchLayer);
+    if (pinchLayer === activeImg) syncImgSliders(pinchLayer);
+    redraw();
+    return;
+  }
+}
+
+// ── MOUSEUP / TOUCHEND ──
+function onEnd() {
+  if (pointerMode === 'draw' && liveStroke) {
+    if (liveStroke.points.length > 1) { drawStrokes.push(liveStroke); refreshLayers(); }
+    liveStroke = null;
+  }
+  if (pointerMode === 'drag') { orbitCtrl.enabled = true; refreshLayers(); }
+  if (pointerMode === 'pinch') { orbitCtrl.enabled = true; refreshLayers(); }
+  if (pointerMode === 'orbit' || pointerMode === 'none') orbitCtrl.enabled = true;
+  pointerMode = 'none';
+  dragLayer  = null;
+  pinchLayer = null;
+}
+
+// Bind events — mouse
+threeCanvas.addEventListener('mousedown',  onStart);
+threeCanvas.addEventListener('mousemove',  onMove);
+threeCanvas.addEventListener('mouseup',    onEnd);
+threeCanvas.addEventListener('mouseleave', onEnd);
+
+// Bind events — touch (passive:false so we can preventDefault)
+threeCanvas.addEventListener('touchstart', onStart, { passive: false });
+threeCanvas.addEventListener('touchmove',  onMove,  { passive: false });
+threeCanvas.addEventListener('touchend',   onEnd,   { passive: true  });
+threeCanvas.addEventListener('touchcancel',onEnd,   { passive: true  });
+
+// Deselect button
+document.getElementById('btn-deselect').onclick = () => {
+  selectedId = null; hideXform(); redraw(); refreshLayers();
+};
 
 
-/* ═══════════════════════════════════════════════════════════════════
-   §9  LAYER LIST & TRANSFORM PANEL
-   ═══════════════════════════════════════════════════════════════════ */
-
-function refreshLayerList() {
+/* ══════════════════════════════════════════════════════════════
+   §10  LAYER LIST & XFORM PANEL
+══════════════════════════════════════════════════════════════ */
+function refreshLayers() {
   const list = document.getElementById('layer-list');
-  const allLayers = [
-    ...layers.map((l,i)  => ({ ...l, _src:'layer',  _i:i })),
-    ...drawStrokes.map((s,i) => ({ id:'stroke-'+i, type:'stroke', color:s.color, _src:'stroke', _i:i }))
+  const all  = [
+    ...layers.map((L,i)  => ({...L,_src:'layer',_i:i})),
+    ...drawStrokes.map((s,i) => ({id:'s'+i,type:'stroke',color:s.color,_src:'stroke',_i:i}))
   ];
 
-  if (!allLayers.length) {
-    list.innerHTML = '<p style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0">No layers yet.<br/>Add images, text, or draw.</p>';
+  if (!all.length) {
+    list.innerHTML = '<p style="font-size:12px;color:var(--text3);text-align:center;padding:24px 0">No layers yet</p>';
     return;
   }
 
   list.innerHTML = '';
-  [...allLayers].reverse().forEach(item => {
-    const div   = document.createElement('div');
-    div.className = 'layer-item' + (item.id === selectedId ? ' selected' : '');
+  [...all].reverse().forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'layer-item' + (item.id === selectedId ? ' sel' : '');
 
-    // Thumbnail
-    const thumb = document.createElement('div'); thumb.className = 'layer-thumb';
-    if (item.type==='image' && item.imageEl) {
-      const im = document.createElement('img'); im.src = item.imageEl.src; thumb.appendChild(im);
+    const thumb = document.createElement('div'); thumb.className = 'l-thumb';
+    if (item.type==='image'&&item.imageEl) {
+      const im=document.createElement('img'); im.src=item.imageEl.src; thumb.appendChild(im);
     } else if (item.type==='text') {
-      Object.assign(thumb.style, {
-        background: item.color, color: '#fff', fontSize:'13px',
-        fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center'
-      });
-      thumb.textContent = 'T';
+      thumb.textContent='T';
+      thumb.style.cssText=`background:${item.color};color:#fff;font-size:15px;font-weight:900`;
     } else {
-      thumb.style.background = item.color || '#888';
+      thumb.style.background=item.color||'#888';
     }
 
-    // Info
-    const info = document.createElement('div'); info.style.flex = '1'; info.style.minWidth = '0';
-    info.innerHTML = `<div class="layer-name">${item.type==='text'?`"${item.text}"`:item.type==='stroke'?'Stroke':'Image'}</div><div class="layer-type">${item.type}</div>`;
+    const info = document.createElement('div'); info.className='l-info';
+    info.innerHTML = `<div class="l-name">${item.type==='text'?`"${item.text}"`:item.type==='stroke'?'Stroke':'Image'}</div><div class="l-type">${item.type}</div>`;
 
-    // Delete
-    const del = document.createElement('button'); del.className='layer-del'; del.textContent='✕';
+    const del = document.createElement('button'); del.className='l-del'; del.textContent='✕';
     del.onclick = ev => {
       ev.stopPropagation();
-      if (item._src==='layer') { layers.splice(item._i,1); if (selectedId===item.id){selectedId=null;hideTransformPanel();} }
+      if (item._src==='layer') { layers.splice(item._i,1); if(selectedId===item.id){selectedId=null;hideXform();} }
       else drawStrokes.splice(item._i,1);
-      redrawCanvas(); refreshLayerList(); showToast('Layer deleted');
+      redraw(); refreshLayers(); showToast('Deleted');
     };
 
-    // Select / activate on click
     if (item._src==='layer') {
       div.onclick = () => {
         selectedId = item.id;
-        syncTransformPanel(item);
-        if (item.type==='image') { activeImgLayer = item; syncImgSliders(item); }
-        if (item.type==='text')  { activeTextLayer = item; }
-        redrawCanvas(); refreshLayerList();
+        syncXformPanel(item);
+        if (item.type==='image') { activeImg=item; syncImgSliders(item); }
+        if (item.type==='text')  activeTxt=item;
+        redraw(); refreshLayers();
       };
     }
 
@@ -1194,94 +1467,79 @@ function refreshLayerList() {
   });
 }
 
-/* Transform panel (Layers tab) */
-function syncTransformPanel(layer) {
-  document.getElementById('transform-panel').classList.add('visible');
-  setSliderVal('sel-x',      'sel-x-val',      Math.round(layer.x*100),               v=>v+'%');
-  setSliderVal('sel-y',      'sel-y-val',       Math.round(layer.y*100),               v=>v+'%');
-  setSliderVal('sel-scale',  'sel-scale-val',   layer.scale||40,                       v=>v+'%');
-  setSliderVal('sel-rotate', 'sel-rotate-val',  layer.rotate||0,                       v=>v+'°');
-  setSliderVal('sel-opacity','sel-opacity-val', Math.round((layer.opacity??1)*100),    v=>v+'%');
+function syncXformPanel(L) {
+  document.getElementById('xform-panel').classList.add('show');
+  sv('sel-x','sel-x-v',Math.round(L.x*100),     v=>v+'%');
+  sv('sel-y','sel-y-v',Math.round(L.y*100),      v=>v+'%');
+  sv('sel-s','sel-s-v',L.scale||40,              v=>v+'%');
+  sv('sel-r','sel-r-v',Math.round(L.rotate||0),  v=>v+'°');
+  sv('sel-o','sel-o-v',Math.round((L.opacity??1)*100),v=>v+'%');
 }
+function hideXform() { document.getElementById('xform-panel').classList.remove('show'); }
 
-function hideTransformPanel() {
-  document.getElementById('transform-panel').classList.remove('visible');
-}
-
-// Wire transform-panel sliders → selected layer (live)
-[
-  ['sel-x',       'sel-x-val',      'x',       v=>v+'%', v=>v/100],
-  ['sel-y',       'sel-y-val',      'y',       v=>v+'%', v=>v/100],
-  ['sel-scale',   'sel-scale-val',  'scale',   v=>v+'%', v=>parseFloat(v)],
-  ['sel-rotate',  'sel-rotate-val', 'rotate',  v=>v+'°', v=>parseFloat(v)],
-  ['sel-opacity', 'sel-opacity-val','opacity', v=>v+'%', v=>v/100],
-].forEach(([id, vid, prop, fmt, xfm]) => {
-  document.getElementById(id).addEventListener('input', function() {
+[['sel-x','sel-x-v','x',v=>v+'%',v=>v/100],
+ ['sel-y','sel-y-v','y',v=>v+'%',v=>v/100],
+ ['sel-s','sel-s-v','scale',v=>v+'%',v=>parseFloat(v)],
+ ['sel-r','sel-r-v','rotate',v=>v+'°',v=>parseFloat(v)],
+ ['sel-o','sel-o-v','opacity',v=>v+'%',v=>v/100],
+].forEach(([id,vid,prop,fmt,xfm]) => {
+  document.getElementById(id).oninput = function() {
     document.getElementById(vid).textContent = fmt(this.value);
-    const layer = layers.find(l => l.id === selectedId);
-    if (!layer) return;
-    layer[prop] = xfm(this.value);
-    // Mirror back to image tab if it's the active image layer
-    if (layer.type==='image' && layer===activeImgLayer) syncImgSliders(layer);
-    redrawCanvas();
-  });
-});
-
-document.getElementById('btn-del-selected').onclick = () => {
-  if (selectedId === null) return showToast('No layer selected');
-  layers = layers.filter(l => l.id !== selectedId);
-  selectedId = null; hideTransformPanel(); redrawCanvas(); refreshLayerList();
-  showToast('Layer deleted');
-};
-
-document.getElementById('btn-clear-layers').onclick = clearAll;
-
-
-/* ═══════════════════════════════════════════════════════════════════
-   §10  TAB NAVIGATION
-   ═══════════════════════════════════════════════════════════════════ */
-
-document.querySelectorAll('.tab-btn').forEach(btn => {
-  btn.onclick = () => {
-    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    const L = layers.find(l=>l.id===selectedId); if(!L) return;
+    L[prop] = xfm(this.value);
+    if (L===activeImg) syncImgSliders(L);
+    redraw();
   };
 });
 
+document.getElementById('btn-del-sel').onclick = () => {
+  if (selectedId===null) return showToast('Nothing selected');
+  layers = layers.filter(l=>l.id!==selectedId);
+  selectedId=null; hideXform(); redraw(); refreshLayers(); showToast('Deleted');
+};
+document.getElementById('btn-clear-layers').onclick = clearAll;
 
-/* ═══════════════════════════════════════════════════════════════════
-   §11  UTILITIES
-   ═══════════════════════════════════════════════════════════════════ */
 
-/** Setup range input display only (no callback) */
-function setupRange(inputId, spanId, fmt, cb) {
+/* ══════════════════════════════════════════════════════════════
+   §11  TAB NAVIGATION (sidebar + mobile bottom)
+══════════════════════════════════════════════════════════════ */
+function activateTab(id) {
+  document.querySelectorAll('.tool-tab,.mob-btn').forEach(b => b.classList.toggle('active', b.dataset.tab===id));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id==='tab-'+id));
+}
+
+document.querySelectorAll('.tool-tab,.mob-btn').forEach(btn => {
+  btn.onclick = () => activateTab(btn.dataset.tab);
+});
+
+
+/* ══════════════════════════════════════════════════════════════
+   §12  UTILITIES
+══════════════════════════════════════════════════════════════ */
+// Range input helper
+function rng(inputId, spanId, fmt, cb) {
   document.getElementById(inputId).addEventListener('input', function() {
     document.getElementById(spanId).textContent = fmt(parseFloat(this.value));
     if (cb) cb();
   });
 }
 
-/** Set slider value + display */
-function setSliderVal(inputId, spanId, val, fmt) {
+// Set slider value + display
+function sv(inputId, spanId, val, fmt) {
   document.getElementById(inputId).value = val;
   document.getElementById(spanId).textContent = fmt(val);
 }
 
-/** Toast */
-let _toastTimer;
+// Toast
+let _tt;
 function showToast(msg) {
   const el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
-  clearTimeout(_toastTimer); _toastTimer = setTimeout(()=>el.classList.remove('show'), 2700);
+  clearTimeout(_tt); _tt = setTimeout(()=>el.classList.remove('show'), 2800);
 }
 
-// Init draw cursor size
-const initSize = parseInt(document.getElementById('brush-size').value);
-drawCursorEl.style.width = drawCursorEl.style.height = initSize + 'px';
-drawCursorEl.style.borderColor = document.getElementById('brush-color').value;
-
+// Set initial theme
+document.documentElement.setAttribute('data-theme','dark');
 </script>
 </body>
 </html>
