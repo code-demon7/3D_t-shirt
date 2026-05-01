@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>3D Product Configurator</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ─── TOKENS ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0e0e0f;--surface:#17171a;--panel:#1e1e22;--border:#2e2e35;
+  --accent:#e8ff47;--accent2:#ff5c3a;--text:#f0f0f2;--muted:#6e6e7a;
+  --radius:8px;--sidebar:320px;
+  --mono:'DM Mono',monospace;--display:'Syne',sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--mono)}
+
+/* ─── SHELL ──────────────────────────────────────── */
+#app{display:flex;height:100vh;width:100vw;overflow:hidden}
+
+/* ─── VIEWPORT ───────────────────────────────────── */
+#viewport{
+  flex:1;position:relative;overflow:hidden;
+  background:radial-gradient(ellipse at 40% 50%,#1a1a28 0%,#0e0e0f 70%);
+}
+#three-canvas{display:block;width:100%;height:100%;touch-action:none}
+
+/* loader */
+#loader{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;background:var(--bg);
+  z-index:10;gap:16px;transition:opacity .4s
+}
+#loader.hidden{opacity:0;pointer-events:none}
+.loader-bar{width:200px;height:2px;background:var(--border);border-radius:2px;overflow:hidden}
+.loader-fill{height:100%;background:var(--accent);width:0%;transition:width .3s}
+#loader p{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+
+/* corner labels */
+.vp-label{position:absolute;font-size:10px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;pointer-events:none}
+.vp-label.tl{top:18px;left:20px}
+.vp-label.br{bottom:18px;right:20px}
+
+/* hint */
+#hint{
+  position:absolute;bottom:18px;left:20px;display:flex;align-items:center;gap:8px;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);
+  padding:6px 12px;border-radius:99px;font-size:10px;color:var(--muted);
+  letter-spacing:.08em;pointer-events:none;transition:opacity .3s
+}
+.hint-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* draw-mode indicator */
+#mode-badge{
+  position:absolute;top:18px;right:20px;background:var(--accent2);color:#fff;
+  font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  padding:5px 12px;border-radius:99px;display:none;font-family:var(--mono);pointer-events:none
+}
+
+/* draw cursor */
+#draw-cursor{
+  position:absolute;border-radius:50%;pointer-events:none;
+  transform:translate(-50%,-50%);display:none;z-index:5;
+  border:2px solid var(--accent2)
+}
+
+/* ─── SIDEBAR ─────────────────────────────────────── */
+#sidebar{
+  width:var(--sidebar);height:100vh;background:var(--surface);
+  border-left:1px solid var(--border);display:flex;flex-direction:column;
+  overflow:hidden;flex-shrink:0;z-index:20
+}
+.sb-header{
+  padding:20px 20px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+}
+.sb-logo{font-family:var(--display);font-weight:800;font-size:18px;letter-spacing:-.01em}
+.sb-logo span{color:var(--accent)}
+.sb-badge{
+  font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+  background:var(--accent);color:#000;padding:3px 8px;border-radius:99px;
+  font-family:var(--mono);font-weight:500
+}
+.tab-bar{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.tab-btn{
+  flex:1;padding:12px 4px;background:none;border:none;color:var(--muted);
+  font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s
+}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-btn:hover:not(.active){color:var(--text)}
+.panels-wrap{
+  flex:1;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:var(--border) transparent
+}
+.panels-wrap::-webkit-scrollbar{width:4px}
+.panels-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
+.tab-panel{display:none;padding:20px;gap:20px;flex-direction:column}
+.tab-panel.active{display:flex}
+
+/* sections */
+.section{display:flex;flex-direction:column;gap:10px}
+.section-label{
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;gap:8px
+}
+.section-label::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* controls */
+.control-row{display:flex;align-items:center;gap:10px}
+.control-row label{font-size:11px;color:var(--muted);flex-shrink:0;min-width:66px}
+input[type="color"]{
+  -webkit-appearance:none;width:40px;height:32px;border:1px solid var(--border);
+  border-radius:var(--radius);background:var(--panel);cursor:pointer;padding:2px;flex-shrink:0
+}
+input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+input[type="color"]::-webkit-color-swatch{border:none;border-radius:5px}
+input[type="range"]{
+  -webkit-appearance:none;flex:1;height:3px;background:var(--border);
+  border-radius:99px;outline:none;cursor:pointer
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--accent);cursor:pointer;box-shadow:0 0 0 3px rgba(232,255,71,.15)
+}
+.range-val{font-size:11px;color:var(--muted);min-width:36px;text-align:right}
+input[type="text"],select{
+  width:100%;background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);color:var(--text);font-family:var(--mono);
+  font-size:12px;padding:8px 12px;outline:none;transition:border-color .2s
+}
+input[type="text"]:focus,select:focus{border-color:var(--accent)}
+
+/* buttons */
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 16px;border-radius:var(--radius);font-family:var(--mono);
+  font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;border:1px solid var(--border);background:var(--panel);
+  color:var(--text);transition:all .2s;width:100%
+}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:500}
+.btn.primary:hover{background:#d4eb3c}
+.btn.danger{border-color:var(--accent2);color:var(--accent2)}
+.btn.danger:hover{background:rgba(255,92,58,.1)}
+.btn.active-state{background:rgba(255,92,58,.15);border-color:var(--accent2);color:var(--accent2)}
+
+/* swatches */
+.swatch-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.swatch{
+  width:100%;aspect-ratio:1;border-radius:5px;cursor:pointer;
+  border:2px solid transparent;transition:transform .15s,border-color .15s
+}
+.swatch:hover{transform:scale(1.12)}
+.swatch.selected{border-color:var(--accent)}
+
+/* dropzone */
+.dropzone{
+  border:1.5px dashed var(--border);border-radius:var(--radius);
+  padding:24px 16px;text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s;
+  display:flex;flex-direction:column;align-items:center;gap:8px
+}
+.dropzone:hover,.dropzone.drag-over{border-color:var(--accent);background:rgba(232,255,71,.04)}
+.dropzone-icon{font-size:28px;line-height:1}
+.dropzone p{font-size:11px;color:var(--muted);letter-spacing:.06em}
+.dropzone p strong{color:var(--text)}
+
+/* layer list */
+.layer-list{display:flex;flex-direction:column;gap:4px}
+.layer-item{
+  display:flex;align-items:center;gap:10px;padding:8px 10px;
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);font-size:11px;cursor:pointer;transition:border-color .2s
+}
+.layer-item:hover{border-color:var(--muted)}
+.layer-item.selected{border-color:var(--accent)}
+.layer-thumb{
+  width:32px;height:32px;border-radius:4px;background:var(--border);
+  overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center
+}
+.layer-thumb img{width:100%;height:100%;object-fit:cover}
+.layer-name{flex:1;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.layer-type{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.layer-del{
+  background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;
+  padding:2px 6px;border-radius:4px;transition:color .2s,background .2s;flex-shrink:0
+}
+.layer-del:hover{color:var(--accent2);background:rgba(255,92,58,.1)}
+
+/* transform panel */
+#transform-panel{
+  background:var(--panel);border:1px solid var(--accent);border-left:3px solid var(--accent);
+  border-radius:var(--radius);padding:14px;display:none;flex-direction:column;gap:10px
+}
+#transform-panel.visible{display:flex}
+.tp-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:2px}
+
+/* brush preview */
+.brush-preview{display:flex;align-items:center;justify-content:center;height:44px}
+.brush-circle{border-radius:50%;transition:width .15s,height .15s}
+
+/* footer */
+.sb-footer{
+  padding:14px 20px;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+}
+
+/* toast */
+#toast{
+  position:fixed;bottom:24px;left:50%;
+  transform:translateX(-50%) translateY(60px);
+  background:var(--panel);border:1px solid var(--border);
+  padding:10px 20px;border-radius:99px;font-size:11px;
+  letter-spacing:.08em;color:var(--text);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  z-index:999;white-space:nowrap;pointer-events:none
+}
+#toast.show{transform:translateX(-50%) translateY(0)}
+
+/* responsive */
+@media(max-width:768px){
+  #app{flex-direction:column}
+  #viewport{height:50vh;width:100vw;flex:none}
+  #sidebar{width:100vw;height:50vh;border-left:none;border-top:1px solid var(--border)}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════════ VIEWPORT ══════════ -->
+<div id="viewport">
+  <div id="loader">
+    <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
+    <p>Loading model…</p>
+  </div>
+  <div class="vp-label tl">Studio / Preview</div>
+  <div class="vp-label br">Scroll to zoom</div>
+  <div id="hint"><div class="hint-dot"></div>Rotate · Pinch to zoom</div>
+  <div id="mode-badge">✏ DRAW MODE</div>
+  <div id="draw-cursor"></div>
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<aside id="sidebar">
+  <div class="sb-header">
+    <div class="sb-logo">Config<span>.</span>3D</div>
+    <div class="sb-badge">Pro</div>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="color">Color</button>
+    <button class="tab-btn" data-tab="image">Image</button>
+    <button class="tab-btn" data-tab="text">Text</button>
+    <button class="tab-btn" data-tab="draw">Draw</button>
+    <button class="tab-btn" data-tab="layers">Layers</button>
+  </div>
+
+  <div class="panels-wrap">
+
+    <!-- COLOR TAB -->
+    <div class="tab-panel active" id="tab-color">
+      <div class="section">
+        <div class="section-label">Base Color</div>
+        <div class="control-row">
+          <label>Pick</label>
+          <input type="color" id="base-color" value="#f5f0e8"/>
+          <span id="base-color-hex" style="font-size:11px;color:var(--muted)">#f5f0e8</span>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Presets</div>
+        <div class="swatch-grid" id="swatch-grid"></div>
+      </div>
+      <div class="section">
+        <div class="section-label">Material</div>
+        <div class="control-row">
+          <label>Roughness</label>
+          <input type="range" id="roughness" min="0" max="100" value="80"/>
+          <span class="range-val" id="roughness-val">0.80</span>
+        </div>
+        <div class="control-row">
+          <label>Metalness</label>
+          <input type="range" id="metalness" min="0" max="100" value="0"/>
+          <span class="range-val" id="metalness-val">0.00</span>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Actions</div>
+        <button class="btn danger" id="btn-clear-all">✕ Clear All Layers</button>
+      </div>
+    </div>
+
+    <!-- IMAGE TAB -->
+    <div class="tab-panel" id="tab-image">
+      <div class="section">
+        <div class="section-label">Upload Image</div>
+        <div class="dropzone" id="dropzone">
+          <div class="dropzone-icon">🖼</div>
+          <p><strong>Click or drag</strong> an image here</p>
+          <p>PNG · JPG · SVG · WebP</p>
+        </div>
+        <input type="file" id="img-upload" accept="image/*" style="display:none"/>
+      </div>
+      <div id="img-transform-section" style="display:none;flex-direction:column;gap:10px">
+        <div class="section-label">Position &amp; Transform (live)</div>
+        <div class="control-row">
+          <label>X</label>
+          <input type="range" id="img-x" min="0" max="100" value="50"/>
+          <span class="range-val" id="img-x-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Y</label>
+          <input type="range" id="img-y" min="0" max="100" value="50"/>
+          <span class="range-val" id="img-y-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Scale</label>
+          <input type="range" id="img-scale" min="5" max="200" value="40"/>
+          <span class="range-val" id="img-scale-val">40%</span>
+        </div>
+        <div class="control-row">
+          <label>Rotate</label>
+          <input type="range" id="img-rotate" min="-180" max="180" value="0"/>
+          <span class="range-val" id="img-rotate-val">0°</span>
+        </div>
+        <div class="control-row">
+          <label>Opacity</label>
+          <input type="range" id="img-opacity" min="0" max="100" value="100"/>
+          <span class="range-val" id="img-opacity-val">100%</span>
+        </div>
+        <p style="font-size:10px;color:var(--muted);line-height:1.6">
+          💡 You can also drag the image directly on the 3D model.
+        </p>
+      </div>
+    </div>
+
+    <!-- TEXT TAB -->
+    <div class="tab-panel" id="tab-text">
+      <div class="section">
+        <div class="section-label">Content</div>
+        <input type="text" id="text-input" placeholder="Your custom text…" value="MY TEXT"/>
+      </div>
+      <div class="section">
+        <div class="section-label">Style</div>
+        <div class="control-row">
+          <label>Color</label>
+          <input type="color" id="text-color" value="#111111"/>
+        </div>
+        <div class="control-row">
+          <label>Font</label>
+          <select id="text-font">
+            <option value="DM Mono">DM Mono</option>
+            <option value="Syne">Syne</option>
+            <option value="Impact">Impact</option>
+            <option value="Georgia">Georgia</option>
+            <option value="Arial">Arial</option>
+            <option value="Courier New">Courier New</option>
+            <option value="serif">Serif</option>
+          </select>
+        </div>
+        <div class="control-row">
+          <label>Size</label>
+          <input type="range" id="text-size" min="12" max="220" value="80"/>
+          <span class="range-val" id="text-size-val">80px</span>
+        </div>
+        <div class="control-row">
+          <label>Opacity</label>
+          <input type="range" id="text-opacity" min="0" max="100" value="100"/>
+          <span class="range-val" id="text-opacity-val">100%</span>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Position &amp; Transform</div>
+        <div class="control-row">
+          <label>X</label>
+          <input type="range" id="text-x" min="0" max="100" value="50"/>
+          <span class="range-val" id="text-x-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Y</label>
+          <input type="range" id="text-y" min="0" max="100" value="50"/>
+          <span class="range-val" id="text-y-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Rotate</label>
+          <input type="range" id="text-rotate" min="-180" max="180" value="0"/>
+          <span class="range-val" id="text-rotate-val">0°</span>
+        </div>
+      </div>
+      <button class="btn primary" id="btn-add-text">+ Add Text to Model</button>
+      <div id="text-edit-section" style="display:none;flex-direction:column;gap:8px">
+        <div style="font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)">Editing Active Text Layer</div>
+        <button class="btn" id="btn-update-text">↻ Apply Changes to Text</button>
+      </div>
+    </div>
+
+    <!-- DRAW TAB -->
+    <div class="tab-panel" id="tab-draw">
+      <div class="section">
+        <div class="section-label">Mode</div>
+        <button class="btn" id="btn-draw-toggle">✏ Enable Drawing</button>
+        <p style="font-size:10px;color:var(--muted);line-height:1.7">
+          Enable draw mode, then paint on the 3D model surface. Strokes follow UV coordinates via raycasting — they map accurately to the texture.
+        </p>
+      </div>
+      <div class="section">
+        <div class="section-label">Brush</div>
+        <div class="control-row">
+          <label>Color</label>
+          <input type="color" id="brush-color" value="#ff5c3a"/>
+        </div>
+        <div class="control-row">
+          <label>Size</label>
+          <input type="range" id="brush-size" min="1" max="80" value="14"/>
+          <span class="range-val" id="brush-size-val">14px</span>
+        </div>
+        <div class="control-row">
+          <label>Opacity</label>
+          <input type="range" id="brush-opacity" min="5" max="100" value="90"/>
+          <span class="range-val" id="brush-opacity-val">90%</span>
+        </div>
+        <div class="brush-preview">
+          <div class="brush-circle" id="brush-preview-dot" style="width:14px;height:14px;background:#ff5c3a"></div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Undo</div>
+        <button class="btn danger" id="btn-undo-stroke">↩ Undo Last Stroke</button>
+      </div>
+    </div>
+
+    <!-- LAYERS TAB -->
+    <div class="tab-panel" id="tab-layers">
+      <div class="section">
+        <div class="section-label">Layer Stack</div>
+        <div class="layer-list" id="layer-list">
+          <p style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0">
+            No layers yet.<br/>Add images, text, or draw.
+          </p>
+        </div>
+      </div>
+
+      <!-- Transform panel for selected layer -->
+      <div id="transform-panel">
+        <div class="tp-label">Selected Layer Transform</div>
+        <div class="control-row">
+          <label>X</label>
+          <input type="range" id="sel-x" min="0" max="100" value="50"/>
+          <span class="range-val" id="sel-x-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Y</label>
+          <input type="range" id="sel-y" min="0" max="100" value="50"/>
+          <span class="range-val" id="sel-y-val">50%</span>
+        </div>
+        <div class="control-row">
+          <label>Scale</label>
+          <input type="range" id="sel-scale" min="5" max="200" value="40"/>
+          <span class="range-val" id="sel-scale-val">40%</span>
+        </div>
+        <div class="control-row">
+          <label>Rotate</label>
+          <input type="range" id="sel-rotate" min="-180" max="180" value="0"/>
+          <span class="range-val" id="sel-rotate-val">0°</span>
+        </div>
+        <div class="control-row">
+          <label>Opacity</label>
+          <input type="range" id="sel-opacity" min="0" max="100" value="100"/>
+          <span class="range-val" id="sel-opacity-val">100%</span>
+        </div>
+        <button class="btn danger" id="btn-del-selected">✕ Delete Selected Layer</button>
+      </div>
+
+      <div class="section">
+        <button class="btn danger" id="btn-clear-layers">✕ Delete All Layers</button>
+      </div>
+    </div>
+
+  </div><!-- /panels-wrap -->
+
+  <div class="sb-footer">
+    <span style="font-size:10px;color:var(--muted)">Texture Canvas</span>
+    <span style="font-size:10px;color:var(--muted)">1024 × 1024 px</span>
+  </div>
+</aside>
+
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════════════
+   §1  CANVAS TEXTURE SYSTEM
+   ───────────────────────────────────────────────────────────────────
+   A 1024×1024 canvas is the live writable texture applied to the
+   3D model.  All customisation tools draw here; Three.js re-uploads
+   it every time needsUpdate is set.
+
+   UV ORIENTATION NOTE
+   ───────────────────
+   GLBs exported from Blender store UV V=0 at the BOTTOM of the
+   texture, which is opposite to HTML canvas Y=0 at the TOP.
+
+   We set  canvasTexture.flipY = false  so Three.js does NOT flip
+   the texture.  This means canvas Y=0 ↔ UV V=0 (model bottom).
+
+   Consequence for drawing:  when we get a UV from raycasting
+   we convert to canvas coords as:
+       canvasX = u  * CS
+       canvasY = (1 - v) * CS          ← flips V into canvas space
+
+   Consequence for placing images / text:  we store layer position
+   as normalised [0..1] values (origin = top-left of canvas).
+   The model's "front-centre" is typically u=0.5, v=0.5, which in
+   canvas space is x=0.5*CS, y=0.5*CS  — so layers default to (0.5, 0.5).
+   ═══════════════════════════════════════════════════════════════════ */
+
+const CS = 1024;
+
+const texCanvas = document.createElement('canvas');
+texCanvas.width = texCanvas.height = CS;
+const ctx = texCanvas.getContext('2d');
+
+let canvasTexture = null;   // assigned after Three.js scene is ready
+
+// App state
+let baseColor   = '#f5f0e8';
+let layers      = [];       // [{id,type,x,y,scale,rotate,opacity,...}]
+let drawStrokes = [];       // finalized stroke objects
+let selectedId  = null;
+let nextId      = 1;
+
+/* Full redraw from state */
+function redrawCanvas() {
+  // 1. Background fill
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, CS, CS);
+
+  // 2. All layers bottom → top
+  layers.forEach(l => paintLayer(l));
+
+  // 3. Draw strokes
+  drawStrokes.forEach(s => paintStroke(s));
+
+  // 4. Selection highlight
+  if (selectedId !== null) {
+    const sel = layers.find(l => l.id === selectedId);
+    if (sel) paintSelectionBox(sel);
+  }
+
+  if (canvasTexture) canvasTexture.needsUpdate = true;
+}
+
+/* Paint a single layer */
+function paintLayer(layer) {
+  ctx.save();
+  ctx.translate(layer.x * CS, layer.y * CS);
+  ctx.rotate((layer.rotate || 0) * Math.PI / 180);
+  ctx.globalAlpha = layer.opacity ?? 1;
+
+  if (layer.type === 'image' && layer.imageEl) {
+    const sw = CS * (layer.scale / 100);
+    const sh = (layer.imageEl.naturalHeight / layer.imageEl.naturalWidth) * sw;
+    ctx.drawImage(layer.imageEl, -sw / 2, -sh / 2, sw, sh);
+  }
+
+  if (layer.type === 'text') {
+    ctx.font           = `bold ${layer.size}px "${layer.font}"`;
+    ctx.fillStyle      = layer.color;
+    ctx.textAlign      = 'center';
+    ctx.textBaseline   = 'middle';
+    ctx.fillText(layer.text, 0, 0);
+  }
+
+  ctx.restore();
+}
+
+/* Yellow dashed bounding box + corner dots */
+function paintSelectionBox(layer) {
+  ctx.save();
+  ctx.translate(layer.x * CS, layer.y * CS);
+  ctx.rotate((layer.rotate || 0) * Math.PI / 180);
+
+  let w, h;
+  if (layer.type === 'image' && layer.imageEl) {
+    w = CS * (layer.scale / 100);
+    h = (layer.imageEl.naturalHeight / layer.imageEl.naturalWidth) * w;
+  } else if (layer.type === 'text') {
+    ctx.font = `bold ${layer.size}px "${layer.font}"`;
+    w = ctx.measureText(layer.text).width + 24;
+    h = layer.size + 16;
+  } else {
+    w = h = 80;
+  }
+
+  ctx.strokeStyle = '#e8ff47';
+  ctx.lineWidth   = 2.5;
+  ctx.setLineDash([8, 5]);
+  ctx.globalAlpha = 0.92;
+  ctx.strokeRect(-w / 2, -h / 2, w, h);
+
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e8ff47';
+  [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].forEach(([hx, hy]) => {
+    ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.restore();
+}
+
+/* Paint one stroke */
+function paintStroke(stroke) {
+  if (!stroke.points || stroke.points.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = stroke.color;
+  ctx.lineWidth   = stroke.size;
+  ctx.globalAlpha = stroke.opacity;
+  ctx.lineCap = ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+  for (let i = 1; i < stroke.points.length; i++) ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function clearAll() {
+  layers = []; drawStrokes = []; selectedId = null;
+  hideTransformPanel(); redrawCanvas(); refreshLayerList();
+  showToast('Canvas cleared');
+}
+
+redrawCanvas(); // initial blank canvas
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §2  THREE.JS SCENE
+   ═══════════════════════════════════════════════════════════════════ */
+
+const threeCanvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas: threeCanvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping    = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
+camera.position.set(0, 0.5, 3);
+
+const orbitCtrl = new THREE.OrbitControls(camera, threeCanvas);
+orbitCtrl.enablePan    = false;
+orbitCtrl.enableDamping = true;
+orbitCtrl.dampingFactor = 0.07;
+orbitCtrl.minDistance  = 0.5;
+orbitCtrl.maxDistance  = 8;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const kl = new THREE.DirectionalLight(0xfff5e0, 1.4);
+kl.position.set(2, 4, 3); kl.castShadow = true; scene.add(kl);
+const fl = new THREE.DirectionalLight(0xe0eeff, 0.6);
+fl.position.set(-3, 1, 1); scene.add(fl);
+const rl = new THREE.DirectionalLight(0xffffff, 0.4);
+rl.position.set(0, -2, -3); scene.add(rl);
+scene.add(new THREE.HemisphereLight(0x334466, 0x221100, 0.4));
+
+/* Canvas texture — flipY=false so canvas Y axis matches UV V axis behaviour
+   after we do the (1-v) flip in coordinate conversion. */
+canvasTexture = new THREE.CanvasTexture(texCanvas);
+canvasTexture.flipY    = false;
+canvasTexture.encoding = THREE.sRGBEncoding;
+
+let modelRoot   = null;
+let modelMeshes = [];
+
+const gltfLoader = new THREE.GLTFLoader();
+
+gltfLoader.load('model.glb',
+  gltf => {
+    modelRoot = gltf.scene;
+    const box = new THREE.Box3().setFromObject(modelRoot);
+    const sz  = box.getSize(new THREE.Vector3());
+    const ctr = box.getCenter(new THREE.Vector3());
+    const sc  = 2 / Math.max(sz.x, sz.y, sz.z);
+    modelRoot.scale.setScalar(sc);
+    modelRoot.position.sub(ctr.multiplyScalar(sc));
+
+    modelRoot.traverse(n => {
+      if (!n.isMesh) return;
+      n.castShadow = n.receiveShadow = true;
+      n.material = n.material.clone();
+      n.material.map = canvasTexture;
+      n.material.needsUpdate = true;
+      modelMeshes.push(n);
+    });
+
+    scene.add(modelRoot);
+    hideLoader(); showToast('Model loaded ✓');
+  },
+  xhr => { if (xhr.total) document.getElementById('loader-fill').style.width = (xhr.loaded/xhr.total*100)+'%'; },
+  err => {
+    console.warn('GLB not found — demo sphere', err);
+    const geo  = new THREE.SphereGeometry(1, 64, 64);
+    const mat  = new THREE.MeshStandardMaterial({ map: canvasTexture, roughness: 0.8 });
+    const mesh = new THREE.Mesh(geo, mat);
+    modelMeshes = [mesh];
+    modelRoot = new THREE.Group(); modelRoot.add(mesh); scene.add(modelRoot);
+    hideLoader(); showToast('Demo sphere — place model.glb next to this file');
+  }
+);
+
+function hideLoader() {
+  const el = document.getElementById('loader');
+  el.classList.add('hidden'); setTimeout(() => el.remove(), 500);
+}
+
+function onResize() {
+  const vp = document.getElementById('viewport');
+  renderer.setSize(vp.clientWidth, vp.clientHeight);
+  camera.aspect = vp.clientWidth / vp.clientHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', onResize); onResize();
+
+(function loop() { requestAnimationFrame(loop); orbitCtrl.update(); renderer.render(scene, camera); })();
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §3  MATERIAL CONTROLS
+   ═══════════════════════════════════════════════════════════════════ */
+
+function applyMaterial() {
+  const r = document.getElementById('roughness').value / 100;
+  const m = document.getElementById('metalness').value / 100;
+  modelMeshes.forEach(mesh => { mesh.material.roughness = r; mesh.material.metalness = m; mesh.material.needsUpdate = true; });
+}
+setupRange('roughness','roughness-val', v => v.toFixed(2), applyMaterial);
+setupRange('metalness','metalness-val', v => v.toFixed(2), applyMaterial);
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §4  COLOR SYSTEM
+   ═══════════════════════════════════════════════════════════════════ */
+
+const PRESETS = [
+  '#ffffff','#f5f0e8','#ffd6c0','#ffadb0','#c8e6c9','#b3d9f7','#d1c4e9','#ffe082',
+  '#212121','#37474f','#455a64','#546e7a','#bf360c','#1565c0','#1b5e20','#4a148c',
+  '#ff6f00','#00796b','#880e4f','#263238','#f8bbd0','#dcedc8','#bbdefb','#fff9c4',
+  '#795548','#9e9e9e','#607d8b','#e91e63'
+];
+
+const sgrid = document.getElementById('swatch-grid');
+PRESETS.forEach(hex => {
+  const b = document.createElement('button');
+  b.className = 'swatch'; b.style.background = hex; b.title = hex;
+  b.onclick = () => {
+    applyBase(hex);
+    document.getElementById('base-color').value = hex;
+    document.getElementById('base-color-hex').textContent = hex;
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+    b.classList.add('selected');
+  };
+  sgrid.appendChild(b);
+});
+
+document.getElementById('base-color').addEventListener('input', function() {
+  document.getElementById('base-color-hex').textContent = this.value;
+  applyBase(this.value);
+  document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+});
+
+function applyBase(hex) { baseColor = hex; redrawCanvas(); }
+document.getElementById('btn-clear-all').onclick = clearAll;
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §5  IMAGE UPLOAD & LIVE TRANSFORM
+   ═══════════════════════════════════════════════════════════════════ */
+
+let activeImgLayer = null;
+
+const dropzone  = document.getElementById('dropzone');
+const imgUpload = document.getElementById('img-upload');
+dropzone.onclick = () => imgUpload.click();
+imgUpload.onchange = e => handleImg(e.target.files[0]);
+dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('drag-over'); };
+dropzone.ondragleave = () => dropzone.classList.remove('drag-over');
+dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('drag-over'); handleImg(e.dataTransfer.files[0]); };
+
+function handleImg(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const img = new Image();
+  img.onload = () => {
+    const layer = { id:nextId++, type:'image', imageEl:img, x:0.5, y:0.5, scale:40, rotate:0, opacity:1 };
+    layers.push(layer);
+    activeImgLayer = layer; selectedId = layer.id;
+    document.getElementById('img-transform-section').style.display = 'flex';
+    syncImgSliders(layer);
+    redrawCanvas(); refreshLayerList();
+    showToast('Image added — use sliders or drag on model');
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function syncImgSliders(l) {
+  setSliderVal('img-x',      'img-x-val',      Math.round(l.x*100),         v=>v+'%');
+  setSliderVal('img-y',      'img-y-val',       Math.round(l.y*100),         v=>v+'%');
+  setSliderVal('img-scale',  'img-scale-val',   l.scale,                     v=>v+'%');
+  setSliderVal('img-rotate', 'img-rotate-val',  l.rotate||0,                 v=>v+'°');
+  setSliderVal('img-opacity','img-opacity-val', Math.round((l.opacity??1)*100), v=>v+'%');
+}
+
+// Wire image sliders → live update
+[
+  ['img-x',       'img-x-val',       'x',       v=>v+'%',  v=>v/100],
+  ['img-y',       'img-y-val',       'y',       v=>v+'%',  v=>v/100],
+  ['img-scale',   'img-scale-val',   'scale',   v=>v+'%',  v=>parseFloat(v)],
+  ['img-rotate',  'img-rotate-val',  'rotate',  v=>v+'°',  v=>parseFloat(v)],
+  ['img-opacity', 'img-opacity-val', 'opacity', v=>v+'%',  v=>v/100],
+].forEach(([id, vid, prop, fmt, xfm]) => {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById(vid).textContent = fmt(this.value);
+    if (!activeImgLayer) return;
+    activeImgLayer[prop] = xfm(this.value);
+    selectedId = activeImgLayer.id;
+    redrawCanvas();
+  });
+});
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §6  TEXT TOOL
+   ═══════════════════════════════════════════════════════════════════ */
+
+let activeTextLayer = null;
+
+setupRange('text-size',   'text-size-val',    v => v+'px');
+setupRange('text-opacity','text-opacity-val', v => v+'%');
+setupRange('text-x',      'text-x-val',       v => v+'%');
+setupRange('text-y',      'text-y-val',       v => v+'%');
+setupRange('text-rotate', 'text-rotate-val',  v => v+'°');
+
+// Add text button
+document.getElementById('btn-add-text').onclick = () => {
+  const txt = document.getElementById('text-input').value.trim();
+  if (!txt) return showToast('Enter some text first');
+  const layer = {
+    id: nextId++, type:'text',
+    text:    txt,
+    color:   document.getElementById('text-color').value,
+    font:    document.getElementById('text-font').value,
+    size:    parseInt(document.getElementById('text-size').value),
+    opacity: document.getElementById('text-opacity').value / 100,
+    x:       document.getElementById('text-x').value / 100,
+    y:       document.getElementById('text-y').value / 100,
+    rotate:  parseFloat(document.getElementById('text-rotate').value),
+    scale:   40   // used only for selection box sizing
+  };
+  layers.push(layer);
+  activeTextLayer = layer; selectedId = layer.id;
+  document.getElementById('text-edit-section').style.display = 'flex';
+  document.getElementById('text-edit-section').style.flexDirection = 'column';
+  document.getElementById('text-edit-section').style.gap = '8px';
+  redrawCanvas(); refreshLayerList();
+  showToast(`Text "${txt}" added — drag on model to move`);
+};
+
+// Live preview while sliders move (if active text layer exists)
+['text-x','text-y','text-size','text-color','text-font','text-rotate','text-opacity'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    if (!activeTextLayer) return;
+    applyTextSliders(); redrawCanvas();
+  });
+});
+document.getElementById('text-input').addEventListener('input', () => {
+  if (!activeTextLayer) return;
+  applyTextSliders(); redrawCanvas();
+});
+
+function applyTextSliders() {
+  activeTextLayer.text    = document.getElementById('text-input').value || activeTextLayer.text;
+  activeTextLayer.color   = document.getElementById('text-color').value;
+  activeTextLayer.font    = document.getElementById('text-font').value;
+  activeTextLayer.size    = parseInt(document.getElementById('text-size').value);
+  activeTextLayer.opacity = document.getElementById('text-opacity').value / 100;
+  activeTextLayer.x       = document.getElementById('text-x').value / 100;
+  activeTextLayer.y       = document.getElementById('text-y').value / 100;
+  activeTextLayer.rotate  = parseFloat(document.getElementById('text-rotate').value);
+  selectedId = activeTextLayer.id;
+}
+
+document.getElementById('btn-update-text').onclick = () => {
+  if (!activeTextLayer) return;
+  applyTextSliders(); redrawCanvas(); refreshLayerList();
+  showToast('Text layer updated');
+};
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §7  FREEHAND DRAW TOOL
+   ───────────────────────────────────────────────────────────────────
+   UV → Canvas coordinate conversion:
+     canvasX = u * CS
+     canvasY = (1 - v) * CS
+
+   This correctly flips the UV V axis into canvas Y axis because
+   canvas Y grows downward while UV V grows upward.
+   With flipY=false on the texture, this gives accurate placement.
+   ═══════════════════════════════════════════════════════════════════ */
+
+let drawMode    = false;
+let liveStroke  = null;
+
+const drawCursorEl = document.getElementById('draw-cursor');
+const modeBadge    = document.getElementById('mode-badge');
+const btnDrawTgl   = document.getElementById('btn-draw-toggle');
+
+btnDrawTgl.onclick = () => {
+  drawMode = !drawMode;
+  orbitCtrl.enabled = !drawMode;
+  selectedId = null;
+  btnDrawTgl.textContent = drawMode ? '✏ Disable Drawing' : '✏ Enable Drawing';
+  btnDrawTgl.classList.toggle('active-state', drawMode);
+  modeBadge.style.display = drawMode ? 'block' : 'none';
+  drawCursorEl.style.display = drawMode ? 'block' : 'none';
+  document.getElementById('hint').style.opacity = drawMode ? '0' : '1';
+  redrawCanvas();
+  showToast(drawMode ? 'Draw mode ON — paint directly on model' : 'Draw mode OFF');
+};
+
+// Brush UI sync
+document.getElementById('brush-size').addEventListener('input', function() {
+  const s = parseInt(this.value);
+  document.getElementById('brush-size-val').textContent = s + 'px';
+  drawCursorEl.style.width = drawCursorEl.style.height = s + 'px';
+  document.getElementById('brush-preview-dot').style.width  = Math.min(s,60)+'px';
+  document.getElementById('brush-preview-dot').style.height = Math.min(s,60)+'px';
+});
+document.getElementById('brush-opacity').addEventListener('input', function() {
+  document.getElementById('brush-opacity-val').textContent = this.value+'%';
+});
+document.getElementById('brush-color').addEventListener('input', function() {
+  document.getElementById('brush-preview-dot').style.background = this.value;
+  drawCursorEl.style.borderColor = this.value;
+});
+
+/* Raycaster */
+const raycaster = new THREE.Raycaster();
+const ndcPt     = new THREE.Vector2();
+
+function uvAtPointer(e) {
+  const rect = threeCanvas.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  ndcPt.x =  ((cx - rect.left) / rect.width)  * 2 - 1;
+  ndcPt.y = -((cy - rect.top)  / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndcPt, camera);
+  const hits = raycaster.intersectObjects(modelMeshes, false);
+  if (hits.length && hits[0].uv) {
+    const uv = hits[0].uv;
+    return {
+      x: uv.x * CS,
+      y: (1 - uv.y) * CS    // ← correct: flip V into canvas Y
+    };
+  }
+  return null;
+}
+
+/* Update draw cursor visual position */
+function moveCursor(e) {
+  const rect = threeCanvas.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  drawCursorEl.style.left = (cx - rect.left) + 'px';
+  drawCursorEl.style.top  = (cy - rect.top)  + 'px';
+}
+
+/* ── pointer events ── */
+function onDown(e) {
+  if (!drawMode) return;
+  e.preventDefault();
+  const pt = uvAtPointer(e);
+  if (!pt) return;
+  liveStroke = {
+    color:   document.getElementById('brush-color').value,
+    size:    parseInt(document.getElementById('brush-size').value),
+    opacity: document.getElementById('brush-opacity').value / 100,
+    points:  [pt]
+  };
+}
+
+function onMove(e) {
+  moveCursor(e);
+  if (!drawMode || !liveStroke) return;
+  e.preventDefault();
+  const pt = uvAtPointer(e);
+  if (!pt) return;
+  liveStroke.points.push(pt);
+  // Draw segment incrementally for smooth feedback
+  const pts = liveStroke.points;
+  if (pts.length >= 2) {
+    const a = pts[pts.length-2], b = pts[pts.length-1];
+    ctx.save();
+    ctx.strokeStyle = liveStroke.color;
+    ctx.lineWidth   = liveStroke.size;
+    ctx.globalAlpha = liveStroke.opacity;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    ctx.restore();
+    canvasTexture.needsUpdate = true;
+  }
+}
+
+function onUp() {
+  if (!liveStroke) return;
+  if (liveStroke.points.length > 1) { drawStrokes.push(liveStroke); refreshLayerList(); }
+  liveStroke = null;
+}
+
+threeCanvas.addEventListener('mousedown',  onDown);
+threeCanvas.addEventListener('mousemove',  onMove);
+threeCanvas.addEventListener('mouseup',    onUp);
+threeCanvas.addEventListener('mouseleave', onUp);
+threeCanvas.addEventListener('touchstart', onDown, { passive:false });
+threeCanvas.addEventListener('touchmove',  onMove, { passive:false });
+threeCanvas.addEventListener('touchend',   onUp);
+
+document.getElementById('btn-undo-stroke').onclick = () => {
+  if (!drawStrokes.length) return showToast('Nothing to undo');
+  drawStrokes.pop(); redrawCanvas(); refreshLayerList(); showToast('Stroke undone');
+};
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §8  VIEWPORT DRAG TO MOVE LAYERS
+   ───────────────────────────────────────────────────────────────────
+   When NOT in draw mode, clicking near a layer centre UV selects it.
+   Dragging then moves it in real-time using UV delta.
+   ═══════════════════════════════════════════════════════════════════ */
+
+let isDragging = false, dragLayer = null;
+let dragStartUV = null, dragStartPos = null;
+
+function trySelectLayer(e) {
+  if (drawMode) return false;
+  const uv = uvAtPointer(e);
+  if (!uv) return false;
+  const nu = uv.x / CS, nv = uv.y / CS;
+
+  // Find closest layer centre within threshold
+  let best = null, bestD = 0.13;
+  layers.forEach(l => {
+    const d = Math.hypot(l.x - nu, l.y - nv);
+    if (d < bestD) { bestD = d; best = l; }
+  });
+
+  if (best) {
+    selectedId = best.id;
+    isDragging = true; dragLayer = best;
+    dragStartUV  = { x: nu, y: nv };
+    dragStartPos = { x: best.x, y: best.y };
+    orbitCtrl.enabled = false;
+    syncTransformPanel(best); redrawCanvas(); refreshLayerList();
+    return true;
+  }
+
+  // Click on empty area — deselect
+  if (selectedId !== null) { selectedId = null; redrawCanvas(); refreshLayerList(); }
+  return false;
+}
+
+threeCanvas.addEventListener('mousedown', e => {
+  if (trySelectLayer(e)) e.preventDefault();
+});
+threeCanvas.addEventListener('mousemove', e => {
+  if (!isDragging || !dragLayer) return;
+  const uv = uvAtPointer(e);
+  if (!uv) return;
+  const nu = uv.x / CS, nv = uv.y / CS;
+  dragLayer.x = Math.max(0.02, Math.min(0.98, dragStartPos.x + (nu - dragStartUV.x)));
+  dragLayer.y = Math.max(0.02, Math.min(0.98, dragStartPos.y + (nv - dragStartUV.y)));
+  syncTransformPanel(dragLayer);
+  // Mirror to tab sliders if relevant
+  if (dragLayer.type==='image' && dragLayer===activeImgLayer) syncImgSliders(dragLayer);
+  redrawCanvas();
+  e.preventDefault();
+});
+threeCanvas.addEventListener('mouseup', () => {
+  isDragging = false; dragLayer = null;
+  orbitCtrl.enabled = true; refreshLayerList();
+});
+threeCanvas.addEventListener('mouseleave', () => {
+  isDragging = false; dragLayer = null; orbitCtrl.enabled = true;
+});
+
+// Touch drag
+let touchDrag = false;
+threeCanvas.addEventListener('touchstart', e => {
+  if (drawMode) return;
+  if (trySelectLayer(e)) { touchDrag = true; }
+}, { passive: true });
+threeCanvas.addEventListener('touchmove', e => {
+  if (!touchDrag || !dragLayer) return;
+  const uv = uvAtPointer(e);
+  if (!uv) return;
+  const nu = uv.x/CS, nv = uv.y/CS;
+  dragLayer.x = Math.max(0.02, Math.min(0.98, dragStartPos.x + (nu - dragStartUV.x)));
+  dragLayer.y = Math.max(0.02, Math.min(0.98, dragStartPos.y + (nv - dragStartUV.y)));
+  syncTransformPanel(dragLayer);
+  if (dragLayer.type==='image' && dragLayer===activeImgLayer) syncImgSliders(dragLayer);
+  redrawCanvas();
+}, { passive: true });
+threeCanvas.addEventListener('touchend', () => {
+  touchDrag = false; isDragging = false; dragLayer = null;
+  orbitCtrl.enabled = !drawMode; refreshLayerList();
+});
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §9  LAYER LIST & TRANSFORM PANEL
+   ═══════════════════════════════════════════════════════════════════ */
+
+function refreshLayerList() {
+  const list = document.getElementById('layer-list');
+  const allLayers = [
+    ...layers.map((l,i)  => ({ ...l, _src:'layer',  _i:i })),
+    ...drawStrokes.map((s,i) => ({ id:'stroke-'+i, type:'stroke', color:s.color, _src:'stroke', _i:i }))
+  ];
+
+  if (!allLayers.length) {
+    list.innerHTML = '<p style="font-size:11px;color:var(--muted);text-align:center;padding:20px 0">No layers yet.<br/>Add images, text, or draw.</p>';
+    return;
+  }
+
+  list.innerHTML = '';
+  [...allLayers].reverse().forEach(item => {
+    const div   = document.createElement('div');
+    div.className = 'layer-item' + (item.id === selectedId ? ' selected' : '');
+
+    // Thumbnail
+    const thumb = document.createElement('div'); thumb.className = 'layer-thumb';
+    if (item.type==='image' && item.imageEl) {
+      const im = document.createElement('img'); im.src = item.imageEl.src; thumb.appendChild(im);
+    } else if (item.type==='text') {
+      Object.assign(thumb.style, {
+        background: item.color, color: '#fff', fontSize:'13px',
+        fontWeight:'700', display:'flex', alignItems:'center', justifyContent:'center'
+      });
+      thumb.textContent = 'T';
+    } else {
+      thumb.style.background = item.color || '#888';
+    }
+
+    // Info
+    const info = document.createElement('div'); info.style.flex = '1'; info.style.minWidth = '0';
+    info.innerHTML = `<div class="layer-name">${item.type==='text'?`"${item.text}"`:item.type==='stroke'?'Stroke':'Image'}</div><div class="layer-type">${item.type}</div>`;
+
+    // Delete
+    const del = document.createElement('button'); del.className='layer-del'; del.textContent='✕';
+    del.onclick = ev => {
+      ev.stopPropagation();
+      if (item._src==='layer') { layers.splice(item._i,1); if (selectedId===item.id){selectedId=null;hideTransformPanel();} }
+      else drawStrokes.splice(item._i,1);
+      redrawCanvas(); refreshLayerList(); showToast('Layer deleted');
+    };
+
+    // Select / activate on click
+    if (item._src==='layer') {
+      div.onclick = () => {
+        selectedId = item.id;
+        syncTransformPanel(item);
+        if (item.type==='image') { activeImgLayer = item; syncImgSliders(item); }
+        if (item.type==='text')  { activeTextLayer = item; }
+        redrawCanvas(); refreshLayerList();
+      };
+    }
+
+    div.appendChild(thumb); div.appendChild(info); div.appendChild(del);
+    list.appendChild(div);
+  });
+}
+
+/* Transform panel (Layers tab) */
+function syncTransformPanel(layer) {
+  document.getElementById('transform-panel').classList.add('visible');
+  setSliderVal('sel-x',      'sel-x-val',      Math.round(layer.x*100),               v=>v+'%');
+  setSliderVal('sel-y',      'sel-y-val',       Math.round(layer.y*100),               v=>v+'%');
+  setSliderVal('sel-scale',  'sel-scale-val',   layer.scale||40,                       v=>v+'%');
+  setSliderVal('sel-rotate', 'sel-rotate-val',  layer.rotate||0,                       v=>v+'°');
+  setSliderVal('sel-opacity','sel-opacity-val', Math.round((layer.opacity??1)*100),    v=>v+'%');
+}
+
+function hideTransformPanel() {
+  document.getElementById('transform-panel').classList.remove('visible');
+}
+
+// Wire transform-panel sliders → selected layer (live)
+[
+  ['sel-x',       'sel-x-val',      'x',       v=>v+'%', v=>v/100],
+  ['sel-y',       'sel-y-val',      'y',       v=>v+'%', v=>v/100],
+  ['sel-scale',   'sel-scale-val',  'scale',   v=>v+'%', v=>parseFloat(v)],
+  ['sel-rotate',  'sel-rotate-val', 'rotate',  v=>v+'°', v=>parseFloat(v)],
+  ['sel-opacity', 'sel-opacity-val','opacity', v=>v+'%', v=>v/100],
+].forEach(([id, vid, prop, fmt, xfm]) => {
+  document.getElementById(id).addEventListener('input', function() {
+    document.getElementById(vid).textContent = fmt(this.value);
+    const layer = layers.find(l => l.id === selectedId);
+    if (!layer) return;
+    layer[prop] = xfm(this.value);
+    // Mirror back to image tab if it's the active image layer
+    if (layer.type==='image' && layer===activeImgLayer) syncImgSliders(layer);
+    redrawCanvas();
+  });
+});
+
+document.getElementById('btn-del-selected').onclick = () => {
+  if (selectedId === null) return showToast('No layer selected');
+  layers = layers.filter(l => l.id !== selectedId);
+  selectedId = null; hideTransformPanel(); redrawCanvas(); refreshLayerList();
+  showToast('Layer deleted');
+};
+
+document.getElementById('btn-clear-layers').onclick = clearAll;
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §10  TAB NAVIGATION
+   ═══════════════════════════════════════════════════════════════════ */
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+  };
+});
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   §11  UTILITIES
+   ═══════════════════════════════════════════════════════════════════ */
+
+/** Setup range input display only (no callback) */
+function setupRange(inputId, spanId, fmt, cb) {
+  document.getElementById(inputId).addEventListener('input', function() {
+    document.getElementById(spanId).textContent = fmt(parseFloat(this.value));
+    if (cb) cb();
+  });
+}
+
+/** Set slider value + display */
+function setSliderVal(inputId, spanId, val, fmt) {
+  document.getElementById(inputId).value = val;
+  document.getElementById(spanId).textContent = fmt(val);
+}
+
+/** Toast */
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(_toastTimer); _toastTimer = setTimeout(()=>el.classList.remove('show'), 2700);
+}
+
+// Init draw cursor size
+const initSize = parseInt(document.getElementById('brush-size').value);
+drawCursorEl.style.width = drawCursorEl.style.height = initSize + 'px';
+drawCursorEl.style.borderColor = document.getElementById('brush-color').value;
+
+</script>
+</body>
+</html>
