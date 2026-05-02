@@ -1,2032 +1,2353 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
-<title>Studio 3D — Configurator</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0c0c0d" />
+<title>Atelier — 3D Clothing Configurator</title>
 
-<!-- Three.js -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.134.0/examples/js/controls/OrbitControls.js"></script>
-
-<!-- Firebase v9 compat — Firestore + Auth only (no Storage) -->
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 
 <style>
-/* ═══════════════════════════════════════════════════
-   DESIGN TOKENS
-═══════════════════════════════════════════════════ */
-:root {
-  --A:  #3D9E8C;          /* brand accent */
-  --A2: #2d7a6b;          /* accent dark */
-  --A3: #5bbfad;          /* accent light */
-  --AG: rgba(61,158,140,.18);
-  --R:  #ff5f5f;          /* danger */
+/* ----------------------------------------------------------------- *
+ *  ATELIER — Premium 3D Clothing Configurator
+ *  Aesthetic: Editorial fashion meets Apple-grade craftsmanship
+ * ----------------------------------------------------------------- */
 
-  /* dark theme defaults */
-  --bg:      #0a0a0c;
-  --bg2:     #111116;
-  --surf:    #18181e;
-  --panel:   #1e1e26;
-  --card:    #26262f;
-  --border:  #2e2e3a;
-  --glass:   rgba(24,24,30,.72);
-  --text:    #f0f0f5;
-  --text2:   #9090a8;
-  --text3:   #4a4a5a;
-  --shadow:  0 8px 40px rgba(0,0,0,.55);
-  --shadow-s:0 2px 12px rgba(0,0,0,.35);
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+*::selection { background: var(--accent); color: #fff; }
 
-  --r:  16px;
-  --r2: 10px;
-  --r3: 8px;
-  --font: 'Inter', system-ui, sans-serif;
-  --pnl-h: 54vh;
-  --bar-h: 64px;
-  --side-w: 340px;
-  --trans: .22s cubic-bezier(.4,0,.2,1);
+:root{
+  --accent: #3D9E8C;
+  --accent-soft: rgba(61,158,140,0.14);
+  --accent-glow: rgba(61,158,140,0.45);
+
+  --bg: #f4f3f0;
+  --bg-grad: radial-gradient(ellipse at 30% 20%, #fafaf8 0%, #ebe9e4 60%, #d8d5cd 100%);
+  --surface: rgba(255,255,255,0.72);
+  --surface-solid: #ffffff;
+  --surface-stroke: rgba(15,15,16,0.08);
+  --ink: #0c0c0d;
+  --ink-soft: #45464a;
+  --ink-muted: #8a8c92;
+  --divider: rgba(15,15,16,0.06);
+
+  --shadow-sm: 0 1px 2px rgba(15,15,16,0.04), 0 2px 8px rgba(15,15,16,0.06);
+  --shadow-md: 0 6px 16px rgba(15,15,16,0.08), 0 24px 48px rgba(15,15,16,0.10);
+  --shadow-lg: 0 30px 80px rgba(15,15,16,0.18);
+
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+
+  --ease: cubic-bezier(.22,1,.36,1);
 }
-[data-theme="light"] {
-  --bg:     #f2f3f7;
-  --bg2:    #e8e9ee;
-  --surf:   #ffffff;
-  --panel:  #f8f8fc;
-  --card:   #ededf4;
-  --border: #d4d4e0;
-  --glass:  rgba(255,255,255,.75);
-  --text:   #0d0d18;
-  --text2:  #5a5a72;
-  --text3:  #9898b0;
-  --shadow: 0 8px 40px rgba(0,0,0,.10);
-  --shadow-s:0 2px 12px rgba(0,0,0,.07);
+html.dark{
+  --bg: #0c0c0d;
+  --bg-grad: radial-gradient(ellipse at 30% 20%, #1c1c1f 0%, #0e0e10 60%, #050506 100%);
+  --surface: rgba(22,22,24,0.72);
+  --surface-solid: #161618;
+  --surface-stroke: rgba(255,255,255,0.08);
+  --ink: #f5f5f4;
+  --ink-soft: #c8c8c5;
+  --ink-muted: #76777b;
+  --divider: rgba(255,255,255,0.06);
 }
 
-/* ── Reset ── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--text)}
-button,input,select,textarea{font-family:inherit;outline:none}
-button{cursor:pointer;border:none;background:none}
-img{display:block;max-width:100%}
-
-/* ── Scrollbars ── */
-::-webkit-scrollbar{width:4px;height:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px}
-
-/* ═══════════════════════════════════════════════════
-   APP SHELL
-═══════════════════════════════════════════════════ */
-#app {
-  display: flex;
-  flex-direction: row;
-  width: 100vw; height: 100vh;
+html, body{
+  height: 100%;
   overflow: hidden;
-  transition: background var(--trans);
+  overscroll-behavior: none;
 }
-
-/* ═══════════════════════════════════════════════════
-   VIEWPORT
-═══════════════════════════════════════════════════ */
-#viewport {
-  flex: 1; position: relative; overflow: hidden; min-height: 0;
+body{
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "ss01","cv11";
+  letter-spacing: -0.011em;
   background: var(--bg);
-  transition: background var(--trans);
-}
-#three-canvas {
-  display: block; width: 100%; height: 100%;
+  color: var(--ink);
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   touch-action: none;
 }
 
-/* Viewport background gradient */
-#vp-bg {
-  position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(ellipse 80% 70% at 50% 40%, var(--bg2) 0%, var(--bg) 100%);
-  transition: background var(--trans);
+/* Fancy ambient backdrop ----------------------------------------------------- */
+.stage{
+  position: fixed; inset: 0;
+  background: var(--bg-grad);
   z-index: 0;
 }
-#three-canvas { z-index: 1; position: relative; }
-
-/* ── Loader ── */
-#loader {
-  position: absolute; inset: 0; z-index: 50;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 24px; background: var(--bg);
-  transition: opacity .5s, visibility .5s;
+.stage::before{
+  content:""; position:absolute; inset:0;
+  background-image:
+    radial-gradient(circle at 50% 70%, rgba(61,158,140,0.08), transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(0,0,0,0.05), transparent 40%);
+  pointer-events:none;
 }
-#loader.out { opacity: 0; visibility: hidden; pointer-events: none; }
-.ld-logo { font-size: 22px; font-weight: 800; letter-spacing: -.04em; color: var(--text); }
-.ld-logo span { color: var(--A); }
-.ld-spinner {
-  width: 44px; height: 44px;
-  border: 3px solid var(--border); border-top-color: var(--A);
-  border-radius: 50%; animation: spin .9s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.ld-status { font-size: 12px; color: var(--text3); letter-spacing: .04em; }
-.ld-bar { width: 160px; height: 2px; background: var(--border); border-radius: 99px; overflow: hidden; }
-.ld-fill { height: 100%; background: var(--A); width: 0; transition: width .3s; }
-
-/* ── Top HUD ── */
-#hud {
-  position: absolute; top: 16px; left: 0; right: 0; z-index: 10;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 0 16px; pointer-events: none;
-}
-#hud > * { pointer-events: all; }
-.hud-logo { font-size: 15px; font-weight: 800; letter-spacing: -.03em; color: var(--text); }
-.hud-logo span { color: var(--A); }
-.hud-pills {
-  display: flex; gap: 6px;
-  background: var(--glass); border: 1px solid var(--border);
-  border-radius: 99px; padding: 5px;
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-s);
-}
-.hud-btn {
-  width: 32px; height: 32px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; color: var(--text2);
-  transition: all var(--trans);
-}
-.hud-btn:hover, .hud-btn.on { background: var(--A); color: #fff; }
-.hud-divider { width: 1px; background: var(--border); margin: 4px 2px; }
-
-/* Draw mode badge */
-#draw-badge {
-  position: absolute; bottom: 20px; left: 50%;
-  transform: translateX(-50%) translateY(0);
-  background: var(--R); color: #fff;
-  font-size: 11px; font-weight: 700; letter-spacing: .08em;
-  padding: 8px 20px; border-radius: 99px;
-  box-shadow: 0 4px 20px rgba(255,95,95,.45);
-  display: none; pointer-events: none; z-index: 10;
-  animation: popIn .3s cubic-bezier(.34,1.56,.64,1);
-}
-@keyframes popIn { from { transform: translateX(-50%) scale(.7); opacity: 0; } }
-
-/* Draw cursor */
-#draw-cursor {
-  position: absolute; border-radius: 50%; pointer-events: none;
-  transform: translate(-50%,-50%); display: none; z-index: 6;
-  border: 2px solid var(--A); box-shadow: 0 0 0 4px var(--AG);
-  transition: width .1s, height .1s;
+.grain{
+  position:fixed; inset:0; pointer-events:none; z-index:1; opacity:.35; mix-blend-mode:overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-/* ── Undo/Redo overlay ── */
-#undo-redo {
-  position: absolute; bottom: 20px; right: 16px; z-index: 10;
+/* 3D viewport -------------------------------------------------------------- */
+#viewport{
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+#viewport canvas{
+  display:block; width:100% !important; height:100% !important;
+  touch-action: none;
+}
+
+/* Top bar ------------------------------------------------------------------ */
+.topbar{
+  position: fixed;
+  top: calc(14px + var(--safe-top));
+  left: 14px; right: 14px;
+  z-index: 50;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+.brand{
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px 10px 12px;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--surface-stroke);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+}
+.brand .mark{
+  width: 28px; height: 28px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), #2d7d6f 70%);
+  display:grid; place-items:center;
+  color:#fff; font-weight:700; font-size: 14px;
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
+.brand .name{
+  font-family: 'Instrument Serif', serif;
+  font-size: 20px; font-weight: 400;
+  letter-spacing: 0.01em;
+  font-style: italic;
+}
+.brand .name b{
+  font-family: 'Geist', sans-serif;
+  font-weight: 600;
+  font-style: normal;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-left: 4px;
+  color: var(--ink-soft);
+}
+
+.top-actions{
+  pointer-events: auto;
   display: flex; gap: 8px;
 }
-.ur-btn {
-  width: 42px; height: 42px; border-radius: 12px;
-  background: var(--glass); border: 1px solid var(--border);
-  color: var(--text2); font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-s); transition: all var(--trans);
+.icon-btn{
+  width: 44px; height: 44px;
+  border-radius: 14px;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--surface-stroke);
+  color: var(--ink);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: transform .25s var(--ease), background .2s, color .2s;
+  box-shadow: var(--shadow-sm);
 }
-.ur-btn:hover { background: var(--A); color: #fff; border-color: var(--A); }
-.ur-btn:disabled { opacity: .3; pointer-events: none; }
+.icon-btn:hover{ transform: translateY(-1px); }
+.icon-btn:active{ transform: scale(.94); }
+.icon-btn.active{ background: var(--ink); color: var(--bg); }
+.icon-btn svg{ width: 20px; height: 20px; stroke-width: 1.6; }
+.icon-btn[disabled]{ opacity:.4; cursor: not-allowed; }
 
-/* ═══════════════════════════════════════════════════
-   SIDEBAR — DESKTOP
-═══════════════════════════════════════════════════ */
-#sidebar {
-  width: var(--side-w); height: 100vh;
-  background: var(--surf); border-left: 1px solid var(--border);
-  display: flex; flex-direction: column; flex-shrink: 0; z-index: 20;
-  overflow: hidden;
-  transition: background var(--trans), border-color var(--trans), transform var(--trans);
+/* Mode chip ---------------------------------------------------------------- */
+.mode-chip{
+  position: fixed;
+  top: calc(74px + var(--safe-top));
+  left: 50%;
+  transform: translate(-50%, -8px);
+  z-index: 49;
+  background: var(--ink); color: var(--bg);
+  font-size: 11.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 999px;
+  display: flex; align-items: center; gap: 8px;
+  opacity: 0; pointer-events: none;
+  transition: opacity .3s var(--ease), transform .3s var(--ease);
+  box-shadow: var(--shadow-md);
+}
+.mode-chip.show{ opacity: 1; transform: translate(-50%, 0); }
+.mode-chip .dot{
+  width:6px; height:6px; border-radius:50%;
+  background: var(--accent);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse{
+  0%,100%{ opacity: .6; transform: scale(1);}
+  50%{ opacity:1; transform: scale(1.4);}
 }
 
-/* ── Sidebar header ── */
-.sb-head {
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between;
+/* Side panel (desktop) / Bottom sheet (mobile) ----------------------------- */
+.panel{
+  position: fixed;
+  z-index: 40;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
+  backdrop-filter: blur(28px) saturate(140%);
+  border: 1px solid var(--surface-stroke);
+  box-shadow: var(--shadow-lg);
+  transition: transform .45s var(--ease);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Desktop: right floating panel */
+@media (min-width: 901px){
+  .panel{
+    top: 80px; bottom: 24px; right: 24px;
+    width: 380px;
+    border-radius: var(--radius-xl);
+    transform: translateX(0);
+  }
+  .panel.collapsed{ transform: translateX(420px); }
+  .sheet-handle{ display:none; }
+  .panel-tabs{ padding: 14px 14px 0; }
+}
+
+/* Mobile / Tablet: bottom sheet */
+@media (max-width: 900px){
+  .panel{
+    left: 10px; right: 10px;
+    bottom: calc(10px + var(--safe-bottom));
+    border-radius: 28px;
+    max-height: 72vh;
+    transform: translateY(calc(100% - 96px));
+  }
+  .panel.expanded{ transform: translateY(0); }
+  .sheet-handle{
+    display:flex;
+    flex-direction:column; align-items:center;
+    padding: 10px 0 4px;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+  .sheet-handle .bar{
+    width: 44px; height: 5px; border-radius: 999px;
+    background: var(--ink-muted); opacity: .35;
+  }
+  .panel-tabs{ padding: 6px 10px 0; }
+}
+
+/* Tabs --------------------------------------------------------------------- */
+.panel-tabs{
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
   flex-shrink: 0;
 }
-.sb-title { font-size: 13px; font-weight: 700; color: var(--text3); letter-spacing: .06em; text-transform: uppercase; }
-.sb-head-actions { display: flex; gap: 6px; }
-.sb-icon-btn {
-  width: 34px; height: 34px; border-radius: 10px;
-  background: var(--card); border: 1px solid var(--border);
-  color: var(--text2); font-size: 15px;
-  display: flex; align-items: center; justify-content: center;
-  transition: all var(--trans);
+.panel-tabs::-webkit-scrollbar{ display:none; }
+.tab{
+  flex: 1 0 auto;
+  min-width: 64px;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ink-muted);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  transition: all .25s var(--ease);
 }
-.sb-icon-btn:hover { background: var(--A); color: #fff; border-color: var(--A); }
-.sb-icon-btn.active { background: var(--A); color: #fff; border-color: var(--A); }
+.tab svg{ width:18px; height:18px; stroke-width: 1.6; }
+.tab:hover{ color: var(--ink); }
+.tab.active{
+  background: var(--ink);
+  color: var(--bg);
+}
 
-/* ── Tool tabs ── */
-#tool-tabs {
-  display: flex; border-bottom: 1px solid var(--border);
-  flex-shrink: 0; overflow-x: auto; scrollbar-width: none;
-  gap: 0;
+/* Panel body --------------------------------------------------------------- */
+.panel-body{
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 20px 28px;
+  -webkit-overflow-scrolling: touch;
 }
-#tool-tabs::-webkit-scrollbar { display: none; }
-.t-tab {
-  flex: 1; min-width: 52px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; padding: 11px 6px;
-  color: var(--text3); font-size: 9px; font-weight: 700;
-  letter-spacing: .06em; text-transform: uppercase;
-  border-bottom: 2px solid transparent;
-  transition: all var(--trans);
-}
-.t-tab .icon { font-size: 18px; line-height: 1; }
-.t-tab.on { color: var(--A); border-bottom-color: var(--A); }
+.panel-body::-webkit-scrollbar{ width: 6px; }
+.panel-body::-webkit-scrollbar-thumb{ background: var(--ink-muted); border-radius: 999px; opacity:.3;}
 
-/* ── Panel wrap ── */
-.pnl-wrap {
-  flex: 1; overflow-y: auto; overflow-x: hidden;
-  scrollbar-width: thin;
+.tab-pane{ display: none; animation: paneIn .35s var(--ease); }
+.tab-pane.active{ display: block; }
+@keyframes paneIn{
+  from{ opacity:0; transform: translateY(8px); }
+  to{ opacity:1; transform: translateY(0); }
 }
-.t-panel { display: none; flex-direction: column; gap: 0; padding: 20px 16px; }
-.t-panel.on { display: flex; animation: fadeIn .2s ease; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } }
 
-/* ── Section ── */
-.sec { margin-bottom: 24px; }
-.sec-hd {
-  font-size: 9px; font-weight: 700; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--text3);
-  display: flex; align-items: center; gap: 8px;
+.section-label{
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 4px 0 12px;
+  display:flex; justify-content:space-between; align-items:baseline;
+}
+.section-label .hint{
+  font-size: 10.5px; letter-spacing: 0.04em; text-transform: none;
+  color: var(--ink-muted); font-weight: 400;
+}
+.section-label + .section-label{ margin-top: 26px; }
+h2.section-title{
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1;
+  margin-bottom: 6px;
+  letter-spacing: -0.01em;
+}
+.subtitle{
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 20px;
+  line-height: 1.45;
+}
+
+/* Color swatches ----------------------------------------------------------- */
+.swatches{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+  gap: 10px;
+}
+.swatch{
+  aspect-ratio: 1;
+  border-radius: 14px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  position: relative;
+  transition: transform .25s var(--ease), border-color .25s;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.06);
+}
+.swatch:hover{ transform: scale(1.06); }
+.swatch.active{
+  border-color: var(--ink);
+  transform: scale(1.06);
+}
+.swatch.active::after{
+  content:""; position:absolute; inset: -7px;
+  border-radius: 18px;
+  border: 1.5px dashed var(--ink);
+  opacity:.4;
+}
+.color-input-wrap{
+  margin-top: 14px;
+  display:flex; align-items:center; gap: 10px;
+  background: var(--surface-solid);
+  padding: 8px 14px 8px 8px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-stroke);
+}
+.color-input-wrap input[type="color"]{
+  width: 36px; height: 36px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 10px;
+  -webkit-appearance: none;
+}
+.color-input-wrap input[type="color"]::-webkit-color-swatch{ border-radius: 10px; border: none; }
+.color-input-wrap input[type="color"]::-moz-color-swatch{ border-radius: 10px; border: none; }
+.color-input-wrap span{ font-size: 12px; color: var(--ink-muted); }
+.color-input-wrap span b{ color: var(--ink); font-weight: 500; font-feature-settings: "tnum"; }
+
+/* Buttons ------------------------------------------------------------------ */
+.btn{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: transform .2s var(--ease), background .2s, color .2s, box-shadow .2s;
+  width: 100%;
+  background: var(--ink);
+  color: var(--bg);
+}
+.btn:hover{ transform: translateY(-1px); }
+.btn:active{ transform: translateY(0) scale(.98); }
+.btn.outline{
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--surface-stroke);
+}
+.btn.accent{
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 24px var(--accent-glow);
+}
+.btn.accent:hover{ box-shadow: 0 10px 30px var(--accent-glow); }
+.btn.ghost{
+  background: var(--surface-solid);
+  color: var(--ink);
+  border-color: var(--surface-stroke);
+}
+.btn.danger{
+  background: transparent; color: #c8504a;
+  border-color: rgba(200,80,74,0.25);
+}
+.btn svg{ width: 16px; height: 16px; stroke-width: 1.6; }
+.btn-row{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+
+/* Upload area -------------------------------------------------------------- */
+.upload{
+  border: 1.5px dashed var(--surface-stroke);
+  background: var(--surface-solid);
+  border-radius: var(--radius);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .25s, background .25s;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.upload:hover{ border-color: var(--accent); background: var(--accent-soft); }
+.upload svg{ width: 28px; height: 28px; color: var(--ink-muted); stroke-width: 1.4; }
+.upload .t1{ font-size: 14px; font-weight: 500; }
+.upload .t2{ font-size: 11.5px; color: var(--ink-muted); }
+
+/* Sliders ------------------------------------------------------------------ */
+.field{ margin-bottom: 14px; }
+.field label{
+  display:flex; justify-content:space-between;
+  font-size: 12px; color: var(--ink-soft); margin-bottom: 8px;
+  font-weight: 500;
+}
+.field label b{ color: var(--ink); font-weight:500; font-feature-settings:"tnum";}
+input[type="range"]{
+  -webkit-appearance:none; appearance:none;
+  width:100%; height: 4px;
+  background: var(--divider);
+  border-radius: 999px; outline:none;
+}
+input[type="range"]::-webkit-slider-thumb{
+  -webkit-appearance:none; appearance:none;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-stroke);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  transition: transform .2s;
+}
+input[type="range"]::-webkit-slider-thumb:hover{ transform: scale(1.1); }
+input[type="range"]::-moz-range-thumb{
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-stroke);
+  cursor: pointer;
+}
+
+/* Text input --------------------------------------------------------------- */
+.text-input, .select{
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-stroke);
+  background: var(--surface-solid);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.text-input:focus, .select:focus{ border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-family: inherit; }
+
+.font-list{
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px; margin-top: 10px;
+}
+.font-pill{
+  padding: 10px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--surface-stroke);
+  background: var(--surface-solid);
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: all .2s;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.font-pill.active{ background: var(--ink); color: var(--bg); border-color: var(--ink); }
+
+/* Layers list -------------------------------------------------------------- */
+.layer-list{ display: flex; flex-direction: column; gap: 6px; }
+.layer-item{
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-stroke);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.layer-item:hover{ border-color: var(--ink-muted); }
+.layer-item.active{ border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.layer-item .thumb{
+  width: 36px; height: 36px;
+  border-radius: 8px; background: var(--bg);
+  display:grid; place-items:center;
+  font-size: 11px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-stroke);
+}
+.layer-item .thumb img{ width:100%; height:100%; object-fit:cover; }
+.layer-item .meta{ flex:1; min-width:0; }
+.layer-item .meta .t{ font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layer-item .meta .s{ font-size: 11px; color: var(--ink-muted); }
+.layer-item .actions{ display: flex; gap: 4px; }
+.mini-btn{
+  width: 28px; height: 28px; border-radius: 8px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--ink-muted);
+  display:grid; place-items:center;
+  transition: all .2s;
+}
+.mini-btn:hover{ color: var(--ink); background: var(--bg); }
+.mini-btn svg{ width: 14px; height: 14px; stroke-width: 1.6; }
+
+.empty-state{
+  padding: 32px 20px;
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: 13px;
+  border: 1px dashed var(--surface-stroke);
+  border-radius: var(--radius);
+}
+
+/* Selected layer transform card ------------------------------------------- */
+.transform-card{
+  background: var(--surface-solid);
+  border: 1px solid var(--surface-stroke);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.transform-card .head{
+  display:flex; justify-content:space-between; align-items:center;
   margin-bottom: 12px;
 }
-.sec-hd::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-
-/* ── Controls ── */
-.c-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-.c-lbl { font-size: 12px; color: var(--text2); flex-shrink: 0; min-width: 52px; font-weight: 500; }
-.c-val { font-size: 11px; color: var(--text3); min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
-
-input[type="range"] {
-  -webkit-appearance: none; flex: 1; height: 4px;
-  background: var(--border); border-radius: 99px; cursor: pointer;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-  background: var(--A); cursor: pointer;
-  box-shadow: 0 0 0 5px var(--AG);
-}
-input[type="range"]::-moz-range-thumb {
-  width: 18px; height: 18px; border-radius: 50%; border: none;
-  background: var(--A); cursor: pointer;
+.transform-card .head .t{
+  font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted);
 }
 
-input[type="color"] {
-  -webkit-appearance: none; width: 38px; height: 38px;
-  border: 2px solid var(--border); border-radius: 10px;
-  background: var(--card); cursor: pointer; padding: 2px; flex-shrink: 0;
+/* Toast -------------------------------------------------------------------- */
+.toast-stack{
+  position: fixed; bottom: calc(120px + var(--safe-bottom)); left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  pointer-events: none;
 }
-input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
-input[type="color"]::-webkit-color-swatch { border: none; border-radius: 7px; }
-
-input[type="text"], select, textarea {
-  width: 100%; background: var(--card);
-  border: 1.5px solid var(--border); border-radius: var(--r2);
-  color: var(--text); font-size: 13px; padding: 11px 13px;
-  transition: border-color var(--trans);
+@media(min-width: 901px){ .toast-stack{ bottom: 30px; } }
+.toast{
+  background: var(--ink); color: var(--bg);
+  font-size: 13px; padding: 12px 18px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-md);
+  animation: toastIn .4s var(--ease), toastOut .4s var(--ease) 2.6s forwards;
+  display: flex; align-items: center; gap: 8px;
 }
-input[type="text"]:focus, select:focus, textarea:focus { border-color: var(--A); }
-
-/* ── Buttons ── */
-.btn {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 13px 16px; border-radius: var(--r2);
-  font-size: 13px; font-weight: 600; letter-spacing: .01em;
-  width: 100%; transition: all var(--trans);
-  border: 1.5px solid var(--border); background: var(--card); color: var(--text);
+.toast.success{ background: var(--accent); color: white; }
+.toast.error{ background: #c8504a; color: white; }
+@keyframes toastIn{
+  from{ opacity:0; transform: translateY(20px) scale(.95); }
+  to{ opacity:1; transform: translateY(0) scale(1); }
 }
-.btn:hover { border-color: var(--A); color: var(--A); }
-.btn:active { transform: scale(.97); }
-.btn.prim { background: var(--A); border-color: var(--A); color: #fff; }
-.btn.prim:hover { background: var(--A3); border-color: var(--A3); }
-.btn.ghost { background: transparent; }
-.btn.danger { border-color: var(--R); color: var(--R); }
-.btn.danger:hover { background: rgba(255,95,95,.1); }
-.btn.draw-on { background: var(--R); border-color: var(--R); color: #fff; }
-.btn-row { display: flex; gap: 8px; }
-.btn-row .btn { flex: 1; }
-.btn.sm { padding: 9px 12px; font-size: 12px; }
-
-/* ── Color swatches ── */
-.swatch-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.sw {
-  width: 38px; height: 38px; border-radius: 12px;
-  border: 3px solid transparent; cursor: pointer;
-  transition: transform var(--trans), border-color var(--trans), box-shadow var(--trans);
-  box-shadow: 0 2px 8px rgba(0,0,0,.2);
-}
-.sw:hover { transform: scale(1.1); }
-.sw.on { border-color: var(--A); box-shadow: 0 0 0 3px var(--AG); }
-
-/* ── Dropzone ── */
-.dropzone {
-  border: 2px dashed var(--border); border-radius: var(--r);
-  padding: 28px 16px; text-align: center; cursor: pointer;
-  transition: all var(--trans); background: var(--card);
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-}
-.dropzone:hover, .dropzone.over {
-  border-color: var(--A); background: var(--AG);
-}
-.dz-icon { font-size: 34px; line-height: 1; }
-.dz-title { font-size: 14px; font-weight: 700; color: var(--text); }
-.dz-sub { font-size: 11px; color: var(--text3); }
-
-/* ── Layer list ── */
-.layer-list { display: flex; flex-direction: column; gap: 6px; }
-.l-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; background: var(--card);
-  border: 1.5px solid var(--border); border-radius: var(--r2);
-  cursor: pointer; transition: all var(--trans);
-}
-.l-item:hover { border-color: var(--text3); }
-.l-item.on { border-color: var(--A); background: var(--AG); }
-.l-thumb {
-  width: 38px; height: 38px; border-radius: 8px;
-  background: var(--border); overflow: hidden; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; font-size: 16px;
-}
-.l-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.l-info { flex: 1; min-width: 0; }
-.l-name { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.l-type { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .05em; margin-top: 1px; }
-.l-del {
-  width: 28px; height: 28px; border-radius: 8px;
-  color: var(--text3); font-size: 14px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  transition: all var(--trans);
-}
-.l-del:hover { background: rgba(255,95,95,.15); color: var(--R); }
-
-/* ── Xform panel ── */
-#xform-panel {
-  background: var(--panel); border: 1.5px solid var(--A);
-  border-radius: var(--r); padding: 14px;
-  display: none; flex-direction: column; gap: 10px;
-  margin-bottom: 16px;
-  box-shadow: 0 0 0 4px var(--AG);
-  animation: fadeIn .2s ease;
-}
-#xform-panel.show { display: flex; }
-.xf-hd { font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--A); }
-
-/* ── Brush preview ── */
-.brush-prev {
-  height: 52px; background: var(--card); border-radius: var(--r2);
-  border: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: center;
-}
-.brush-dot { border-radius: 50%; transition: all .15s; }
-
-/* ── Save buttons ── */
-.save-area { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
-
-/* ── Auth bar ── */
-#auth-bar {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center; gap: 10px;
-  flex-shrink: 0; background: var(--surf);
-}
-.auth-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  background: var(--A); color: #fff; font-size: 13px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.auth-name { font-size: 12px; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.auth-sign-btn {
-  font-size: 11px; font-weight: 600; color: var(--A);
-  padding: 6px 12px; border: 1px solid var(--A); border-radius: 99px;
-  transition: all var(--trans);
-}
-.auth-sign-btn:hover { background: var(--A); color: #fff; }
-
-/* ═══════════════════════════════════════════════════
-   MOBILE BOTTOM SHEET
-═══════════════════════════════════════════════════ */
-.mobile #app { flex-direction: column; }
-.mobile #viewport { height: calc(100vh - var(--pnl-h) - var(--bar-h)); flex: none; }
-.mobile #sidebar {
-  width: 100%; height: var(--pnl-h);
-  border-left: none; border-top: 1px solid var(--border);
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -8px 40px rgba(0,0,0,.35);
-}
-.mobile #auth-bar { display: none; }
-.mobile .sb-head { padding: 14px 16px 12px; }
-
-/* Sheet drag handle */
-.sheet-handle {
-  display: none; justify-content: center; padding: 10px 0 6px;
-  flex-shrink: 0;
-}
-.mobile .sheet-handle { display: flex; }
-.handle-bar { width: 36px; height: 4px; background: var(--border); border-radius: 99px; }
-
-/* ── Mobile bottom nav ── */
-#mob-nav {
-  display: none; height: var(--bar-h);
-  background: var(--surf); border-top: 1px solid var(--border);
-  align-items: center; justify-content: space-around;
-  flex-shrink: 0; z-index: 25;
-}
-.mobile #mob-nav { display: flex; }
-.mn-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  color: var(--text3); font-size: 9px; font-weight: 700;
-  letter-spacing: .05em; text-transform: uppercase;
-  padding: 6px 10px; border-radius: 12px; transition: all var(--trans);
-}
-.mn-btn .icon { font-size: 22px; line-height: 1; }
-.mn-btn.on { color: var(--A); }
-
-/* ── Toast ── */
-#toast {
-  position: fixed; bottom: 28px; left: 50%;
-  transform: translateX(-50%) translateY(80px);
-  background: var(--text); color: var(--bg);
-  font-size: 13px; font-weight: 600; letter-spacing: .01em;
-  padding: 12px 24px; border-radius: 99px;
-  box-shadow: var(--shadow); z-index: 999;
-  pointer-events: none; white-space: nowrap;
-  transition: transform .35s cubic-bezier(.34,1.56,.64,1);
-}
-#toast.show { transform: translateX(-50%) translateY(0); }
-
-/* ── Background picker ── */
-.bg-options { display: flex; flex-wrap: wrap; gap: 8px; }
-.bg-opt {
-  flex: 1; min-width: 60px; height: 44px; border-radius: var(--r2);
-  border: 2px solid var(--border); cursor: pointer; transition: all var(--trans);
-}
-.bg-opt.on { border-color: var(--A); box-shadow: 0 0 0 3px var(--AG); }
-.bg-opt:hover { transform: scale(1.04); }
-
-/* ── Flutter user card ── */
-.user-card-loading {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px; background: var(--card);
-  border-radius: var(--r2); border: 1px solid var(--border);
-}
-.ucl-avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: var(--border); color: var(--text3);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 700; flex-shrink: 0;
-}
-.flutter-user-connected {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px; background: var(--AG);
-  border-radius: var(--r2); border: 1.5px solid var(--A);
-}
-.fuc-avatar {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: var(--A); color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 16px; font-weight: 800; flex-shrink: 0;
-}
-.fuc-info { flex: 1; min-width: 0; }
-.fuc-name { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fuc-email { font-size: 10px; color: var(--text3); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fuc-badge {
-  font-size: 9px; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; background: var(--A); color: #fff;
-  padding: 3px 8px; border-radius: 99px;
+@keyframes toastOut{
+  to{ opacity:0; transform: translateY(-10px) scale(.95); }
 }
 
-/* ── Saved design card ── */
-.saved-card {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px; background: var(--card);
-  border-radius: var(--r2); border: 1px solid var(--border);
-  cursor: pointer; transition: border-color var(--trans);
+/* Loading overlay ---------------------------------------------------------- */
+.loader{
+  position: fixed; inset: 0; z-index: 1000;
+  background: var(--bg);
+  display: grid; place-items: center;
+  transition: opacity .6s var(--ease);
 }
-.saved-card:hover { border-color: var(--A); }
-.saved-thumb {
-  width: 48px; height: 48px; border-radius: 8px;
-  background: var(--border); overflow: hidden; flex-shrink: 0;
-  object-fit: cover;
+.loader.hide{ opacity: 0; pointer-events: none; }
+.loader-content{ text-align: center; }
+.loader-mark{
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--accent), #2d7d6f 70%);
+  display: grid; place-items:center; color:white; font-weight:700; font-size: 22px;
+  margin: 0 auto 16px;
+  animation: bounce 1.6s infinite var(--ease);
+  box-shadow: 0 12px 32px var(--accent-glow);
 }
-.saved-info { flex: 1; min-width: 0; }
-.saved-date { font-size: 12px; font-weight: 600; }
-.saved-status {
-  display: inline-block; font-size: 9px; font-weight: 700;
-  letter-spacing: .06em; text-transform: uppercase;
-  padding: 2px 7px; border-radius: 99px; margin-top: 3px;
+@keyframes bounce{
+  0%,100%{ transform: translateY(0); }
+  50%{ transform: translateY(-8px); }
 }
-.status-saved { background: var(--AG); color: var(--A); }
-.status-submitted { background: rgba(255,200,50,.15); color: #f0b429; }
+.loader-text{
+  font-family: 'Instrument Serif', serif; font-style: italic;
+  font-size: 22px;
+}
+.loader-bar{
+  width: 200px; height: 2px;
+  background: var(--divider);
+  margin: 16px auto 0;
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.loader-bar::after{
+  content:"";
+  position:absolute; top:0; left:0; height:100%;
+  width: 30%;
+  background: var(--accent);
+  border-radius: 999px;
+  animation: load 1.4s infinite var(--ease);
+}
+@keyframes load{
+  0%{ left:-30%; } 100%{ left: 100%; }
+}
 
-/* ── Spin animation ── */
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
-  :root { --pnl-h: 52vh; --bar-h: 60px; }
-  .t-tab { min-width: 46px; font-size: 8px; }
+/* Modal -------------------------------------------------------------------- */
+.modal{
+  position: fixed; inset: 0;
+  z-index: 300;
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(0,0,0,0.4);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: fadeIn .25s;
+}
+.modal.show{ display: flex; }
+@keyframes fadeIn{ from{ opacity:0; } to{ opacity:1; }}
+.modal-card{
+  background: var(--surface-solid);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  max-width: 380px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  animation: cardIn .35s var(--ease);
+}
+@keyframes cardIn{ from{ transform: translateY(20px) scale(.96); opacity: 0; } to{ transform: translateY(0) scale(1); opacity: 1; } }
+.modal-card h3{
+  font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400;
+  font-size: 28px; margin-bottom: 6px;
+}
+.modal-card p{ color: var(--ink-soft); font-size: 14px; margin-bottom: 18px; line-height: 1.5; }
+.modal-card .preview{
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius);
+  background: var(--bg-grad);
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid var(--surface-stroke);
+}
+.modal-card .preview img{ width: 100%; height: 100%; object-fit: cover; }
+
+/* Drawing toolbar (floating) ---------------------------------------------- */
+.draw-toolbar{
+  position: fixed;
+  left: 50%; transform: translateX(-50%);
+  bottom: calc(120px + var(--safe-bottom));
+  z-index: 45;
+  display: none;
+  align-items: center; gap: 6px;
+  padding: 8px;
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--surface-stroke);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+}
+.draw-toolbar.show{ display: flex; animation: paneIn .35s var(--ease); }
+.draw-color{ width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px var(--surface-stroke); transition: transform .2s; }
+.draw-color:hover{ transform: scale(1.1); }
+.draw-color.active{ box-shadow: 0 0 0 2px var(--ink); }
+.draw-toolbar .sep{ width: 1px; height: 24px; background: var(--divider); margin: 0 4px; }
+.draw-toolbar input[type="range"]{ width: 80px; }
+
+/* Helper / hidden ---------------------------------------------------------- */
+.hidden{ display: none !important; }
+.row{ display:flex; align-items:center; gap: 8px; }
+.gap-2{ gap: 12px; }
+.mt-3{ margin-top: 18px; }
+.mb-2{ margin-bottom: 12px; }
+.text-muted{ color: var(--ink-muted); font-size: 12px; }
+.divider-line{ height: 1px; background: var(--divider); margin: 18px 0; }
 
 </style>
 </head>
 <body>
 
-<!-- ═══════════════ APP ═══════════════ -->
-<div id="app">
+<div class="stage" aria-hidden="true"></div>
+<div class="grain" aria-hidden="true"></div>
 
-<!-- ════════ VIEWPORT ════════ -->
-<div id="viewport">
-  <div id="vp-bg"></div>
-
-  <!-- Loader -->
-  <div id="loader">
-    <div class="ld-logo">Studio<span>.</span>3D</div>
-    <div class="ld-spinner"></div>
-    <div class="ld-bar"><div class="ld-fill" id="ld-fill"></div></div>
-    <div class="ld-status" id="ld-status">Initializing…</div>
+<!-- Loading screen -->
+<div class="loader" id="loader">
+  <div class="loader-content">
+    <div class="loader-mark">A</div>
+    <div class="loader-text">Preparing your atelier…</div>
+    <div class="loader-bar"></div>
   </div>
-
-  <!-- HUD -->
-  <div id="hud">
-    <div class="hud-logo">Studio<span>.</span>3D</div>
-    <div class="hud-pills">
-      <button class="hud-btn" id="hud-reset" title="Reset camera">🔄</button>
-      <div class="hud-divider"></div>
-      <button class="hud-btn" id="hud-draw" title="Draw mode">✏️</button>
-      <div class="hud-divider"></div>
-      <button class="hud-btn" id="hud-deselect" title="Deselect">✕</button>
-      <div class="hud-divider"></div>
-      <button class="hud-btn" id="hud-theme" title="Toggle theme">🌙</button>
-    </div>
-  </div>
-
-  <!-- Draw badge -->
-  <div id="draw-badge">✏ DRAW MODE</div>
-
-  <!-- Draw cursor -->
-  <div id="draw-cursor"></div>
-
-  <!-- Undo / Redo -->
-  <div id="undo-redo">
-    <button class="ur-btn" id="btn-undo" title="Undo" disabled>↩</button>
-    <button class="ur-btn" id="btn-redo" title="Redo" disabled>↪</button>
-  </div>
-
-  <!-- Canvas -->
-  <canvas id="three-canvas"></canvas>
 </div>
 
-<!-- ════════ SIDEBAR ════════ -->
-<aside id="sidebar">
-  <div class="sheet-handle"><div class="handle-bar"></div></div>
+<!-- 3D viewport -->
+<div id="viewport"></div>
 
-  <div class="sb-head">
-    <div class="sb-title">Customize</div>
-    <div class="sb-head-actions">
-      <button class="sb-icon-btn" id="sb-theme" title="Theme">🌙</button>
-      <button class="sb-icon-btn danger" id="sb-clear" title="Clear all" style="color:var(--R)">🗑</button>
-    </div>
+<!-- Mode chip -->
+<div class="mode-chip" id="modeChip"><span class="dot"></span><span id="modeChipText">Editing layer</span></div>
+
+<!-- Top bar -->
+<header class="topbar">
+  <div class="brand">
+    <div class="mark">A</div>
+    <div class="name"><i>Atelier</i><b>STUDIO</b></div>
   </div>
-
-  <!-- Tabs -->
-  <div id="tool-tabs">
-    <button class="t-tab on" data-tab="color"><span class="icon">🎨</span>Color</button>
-    <button class="t-tab" data-tab="image"><span class="icon">🖼</span>Image</button>
-    <button class="t-tab" data-tab="text"><span class="icon">✍️</span>Text</button>
-    <button class="t-tab" data-tab="draw"><span class="icon">✏️</span>Draw</button>
-    <button class="t-tab" data-tab="layers"><span class="icon">📚</span>Layers</button>
-    <button class="t-tab" data-tab="save"><span class="icon">💾</span>Save</button>
+  <div class="top-actions">
+    <button class="icon-btn" id="undoBtn" title="Undo" aria-label="Undo">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14L4 9m0 0l5-5M4 9h11a5 5 0 010 10h-3"/></svg>
+    </button>
+    <button class="icon-btn" id="redoBtn" title="Redo" aria-label="Redo">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 14l5-5m0 0l-5-5m5 5H9a5 5 0 000 10h3"/></svg>
+    </button>
+    <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Theme">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+    </button>
+    <button class="icon-btn" id="togglePanelBtn" title="Toggle panel" aria-label="Panel">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
   </div>
+</header>
 
-  <!-- Panels -->
-  <div class="pnl-wrap">
+<!-- Drawing toolbar (shown only in draw mode) -->
+<div class="draw-toolbar" id="drawToolbar">
+  <div class="draw-color active" data-color="#0c0c0d" style="background:#0c0c0d"></div>
+  <div class="draw-color" data-color="#ffffff" style="background:#ffffff"></div>
+  <div class="draw-color" data-color="#3D9E8C" style="background:#3D9E8C"></div>
+  <div class="draw-color" data-color="#c8504a" style="background:#c8504a"></div>
+  <div class="draw-color" data-color="#e0a82e" style="background:#e0a82e"></div>
+  <div class="draw-color" data-color="#3a6ec5" style="background:#3a6ec5"></div>
+  <div class="sep"></div>
+  <input type="range" id="brushSize" min="2" max="40" value="8" />
+  <div class="sep"></div>
+  <button class="mini-btn" id="undoStrokeBtn" title="Undo stroke">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 14L4 9m0 0l5-5M4 9h11a5 5 0 010 10h-3"/></svg>
+  </button>
+  <button class="mini-btn" id="clearDrawBtn" title="Clear strokes">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg>
+  </button>
+</div>
 
-    <!-- ── COLOR ── -->
-    <div class="t-panel on" id="tab-color">
-      <div class="sec">
-        <div class="sec-hd">Product Color</div>
-        <div class="c-row">
-          <span class="c-lbl">Pick</span>
-          <input type="color" id="base-color" value="#f5f0e8"/>
-          <span id="base-hex" style="font-size:12px;color:var(--text2)">#f5f0e8</span>
-        </div>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Presets</div>
-        <div class="swatch-row" id="swatch-row"></div>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Background</div>
-        <div class="bg-options" id="bg-opts"></div>
-        <div style="margin-top:10px" class="c-row">
-          <span class="c-lbl">Custom</span>
-          <input type="color" id="bg-custom" value="#0a0a0c"/>
-        </div>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Material</div>
-        <div class="c-row"><span class="c-lbl">Rough</span><input type="range" id="roughness" min="0" max="100" value="80"/><span class="c-val" id="roughness-v">0.80</span></div>
-        <div class="c-row"><span class="c-lbl">Metal</span><input type="range" id="metalness" min="0" max="100" value="0"/><span class="c-val" id="metalness-v">0.00</span></div>
+<!-- Bottom-sheet / Side panel -->
+<aside class="panel" id="panel">
+  <div class="sheet-handle" id="sheetHandle"><div class="bar"></div></div>
+
+  <nav class="panel-tabs" role="tablist" aria-label="Tools">
+    <button class="tab active" data-tab="color">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+      Color
+    </button>
+    <button class="tab" data-tab="image">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      Image
+    </button>
+    <button class="tab" data-tab="text">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/></svg>
+      Text
+    </button>
+    <button class="tab" data-tab="draw">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      Draw
+    </button>
+    <button class="tab" data-tab="layers">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+      Layers
+    </button>
+    <button class="tab" data-tab="bg">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21l3.546-3.546M3 21h6m-6 0v-6m18 6l-3.546-3.546M21 21h-6m6 0v-6M3 3l3.546 3.546M3 3h6M3 3v6m18-6l-3.546 3.546M21 3h-6m6 0v6"/></svg>
+      Stage
+    </button>
+    <button class="tab" data-tab="save">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+      Save
+    </button>
+  </nav>
+
+  <div class="panel-body">
+
+    <!-- COLOR ============================================================ -->
+    <div class="tab-pane active" id="tab-color">
+      <h2 class="section-title">Pick a hue.</h2>
+      <p class="subtitle">Choose a base color for the garment. Designs you add will sit on top.</p>
+
+      <div class="section-label">Curated palette</div>
+      <div class="swatches" id="curatedSwatches"></div>
+
+      <div class="section-label">Custom</div>
+      <div class="color-input-wrap">
+        <input type="color" id="customColor" value="#f4f3f0">
+        <span>Custom value <b id="customColorHex">#F4F3F0</b></span>
       </div>
     </div>
 
-    <!-- ── IMAGE ── -->
-    <div class="t-panel" id="tab-image">
-      <div class="sec">
-        <div class="sec-hd">Upload Image</div>
-        <div class="dropzone" id="dropzone">
-          <div class="dz-icon">📁</div>
-          <div class="dz-title">Tap to choose image</div>
-          <div class="dz-sub">PNG · JPG · WebP · SVG</div>
+    <!-- IMAGE ============================================================ -->
+    <div class="tab-pane" id="tab-image">
+      <h2 class="section-title">Pin a graphic.</h2>
+      <p class="subtitle">Upload art, logos, or photos. Drag, pinch, or twist on the model to transform.</p>
+
+      <div id="selectedImageTransform"></div>
+
+      <label class="upload" for="imageUpload">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        <div class="t1">Tap to upload an image</div>
+        <div class="t2">PNG / JPG / SVG · up to 10 MB</div>
+      </label>
+      <input type="file" id="imageUpload" accept="image/*" hidden>
+
+      <div class="section-label mt-3">Tips <span class="hint">Touch the model to transform</span></div>
+      <p class="text-muted">After upload, tap the graphic on the shirt to select. Use one finger to drag, two fingers to pinch & twist.</p>
+    </div>
+
+    <!-- TEXT ============================================================= -->
+    <div class="tab-pane" id="tab-text">
+      <h2 class="section-title">Set the line.</h2>
+      <p class="subtitle">Type a word, phrase, or signature.</p>
+
+      <div id="selectedTextTransform"></div>
+
+      <textarea class="text-input" id="textInput" placeholder="Your text…" maxlength="60" rows="2"></textarea>
+
+      <div class="section-label">Typeface</div>
+      <div class="font-list" id="fontList"></div>
+
+      <div class="field mt-3">
+        <label>Color <b id="textColorHex">#0C0C0D</b></label>
+        <div class="color-input-wrap" style="margin:0;">
+          <input type="color" id="textColor" value="#0c0c0d">
+          <span class="text-muted">Tap to choose</span>
         </div>
-        <input type="file" id="img-file" accept="image/*" style="display:none"/>
       </div>
-      <div id="img-xform" style="display:none">
-        <div class="sec">
-          <div class="sec-hd">Transform (live)</div>
-          <div class="c-row"><span class="c-lbl">X</span><input type="range" id="ix" min="0" max="100" value="50"/><span class="c-val" id="ix-v">50%</span></div>
-          <div class="c-row"><span class="c-lbl">Y</span><input type="range" id="iy" min="0" max="100" value="50"/><span class="c-val" id="iy-v">50%</span></div>
-          <div class="c-row"><span class="c-lbl">Scale</span><input type="range" id="is" min="5" max="200" value="40"/><span class="c-val" id="is-v">40%</span></div>
-          <div class="c-row"><span class="c-lbl">Rotate</span><input type="range" id="ir" min="-180" max="180" value="0"/><span class="c-val" id="ir-v">0°</span></div>
-          <div class="c-row"><span class="c-lbl">Opacity</span><input type="range" id="io" min="0" max="100" value="100"/><span class="c-val" id="io-v">100%</span></div>
-        </div>
-        <p style="font-size:11px;color:var(--text3);line-height:1.7;margin-bottom:16px">
-          💡 <strong style="color:var(--text2)">Drag</strong> on model to move · <strong style="color:var(--text2)">Pinch</strong> to scale & rotate
-        </p>
+
+      <button class="btn accent" id="addTextBtn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+        Add to garment
+      </button>
+    </div>
+
+    <!-- DRAW ============================================================= -->
+    <div class="tab-pane" id="tab-draw">
+      <h2 class="section-title">Draw freely.</h2>
+      <p class="subtitle">Tap below to enter draw mode, then sketch directly onto the garment with your finger or mouse.</p>
+
+      <button class="btn accent" id="drawToggleBtn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+        Enter draw mode
+      </button>
+
+      <div class="section-label mt-3">Tips</div>
+      <p class="text-muted">A floating toolbar will appear at the bottom of the screen with brush colors, size, undo, and clear.</p>
+    </div>
+
+    <!-- LAYERS =========================================================== -->
+    <div class="tab-pane" id="tab-layers">
+      <h2 class="section-title">Design assets.</h2>
+      <p class="subtitle">All graphics, text and strokes you've added. Drag to reorder, tap to select.</p>
+
+      <div class="layer-list" id="layerList">
+        <div class="empty-state">No assets yet — upload an image or add text.</div>
       </div>
     </div>
 
-    <!-- ── TEXT ── -->
-    <div class="t-panel" id="tab-text">
-      <div class="sec">
-        <div class="sec-hd">Content</div>
-        <input type="text" id="txt-input" placeholder="Type your text…" value="MY TEXT"/>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Style</div>
-        <div class="c-row"><span class="c-lbl">Color</span><input type="color" id="txt-color" value="#ffffff"/></div>
-        <div class="c-row">
-          <span class="c-lbl">Font</span>
-          <select id="txt-font">
-            <option value="Inter">Inter</option>
-            <option value="Impact">Impact</option>
-            <option value="Georgia">Georgia</option>
-            <option value="Arial">Arial</option>
-            <option value="Courier New">Courier New</option>
-            <option value="Verdana">Verdana</option>
-          </select>
-        </div>
-        <div class="c-row"><span class="c-lbl">Size</span><input type="range" id="txt-size" min="14" max="220" value="80"/><span class="c-val" id="txt-size-v">80px</span></div>
-        <div class="c-row"><span class="c-lbl">Opacity</span><input type="range" id="txt-op" min="0" max="100" value="100"/><span class="c-val" id="txt-op-v">100%</span></div>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Position</div>
-        <div class="c-row"><span class="c-lbl">X</span><input type="range" id="tx" min="0" max="100" value="50"/><span class="c-val" id="tx-v">50%</span></div>
-        <div class="c-row"><span class="c-lbl">Y</span><input type="range" id="ty" min="0" max="100" value="50"/><span class="c-val" id="ty-v">50%</span></div>
-        <div class="c-row"><span class="c-lbl">Rotate</span><input type="range" id="trot" min="-180" max="180" value="0"/><span class="c-val" id="trot-v">0°</span></div>
-      </div>
-      <button class="btn prim" id="btn-add-txt">+ Add Text</button>
-      <div id="txt-edit" style="display:none;margin-top:10px;flex-direction:column;gap:8px">
-        <div style="font-size:9px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--A)">Editing Active Text</div>
-        <button class="btn" id="btn-update-txt">↻ Apply Changes</button>
+    <!-- BACKGROUND ======================================================= -->
+    <div class="tab-pane" id="tab-bg">
+      <h2 class="section-title">Set the stage.</h2>
+      <p class="subtitle">Backdrop & lighting for the showroom.</p>
+
+      <div class="section-label">Backdrop</div>
+      <div class="swatches" id="bgSwatches"></div>
+
+      <div class="section-label mt-3">Theme</div>
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn ghost" id="lightThemeBtn">Light</button>
+        <button class="btn ghost" id="darkThemeBtn">Dark</button>
       </div>
     </div>
 
-    <!-- ── DRAW ── -->
-    <div class="t-panel" id="tab-draw">
-      <div class="sec">
-        <div class="sec-hd">Draw Mode</div>
-        <button class="btn" id="btn-draw">✏️ Enable Draw Mode</button>
-        <p style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.7">
-          Paint directly on the 3D model. Strokes are mapped via UV raycasting — they land exactly where your finger touches.
-        </p>
-      </div>
-      <div class="sec">
-        <div class="sec-hd">Brush</div>
-        <div class="c-row"><span class="c-lbl">Color</span><input type="color" id="br-color" value="#3D9E8C"/></div>
-        <div class="c-row"><span class="c-lbl">Size</span><input type="range" id="br-size" min="2" max="80" value="16"/><span class="c-val" id="br-size-v">16px</span></div>
-        <div class="c-row"><span class="c-lbl">Opacity</span><input type="range" id="br-op" min="5" max="100" value="90"/><span class="c-val" id="br-op-v">90%</span></div>
-        <div class="brush-prev"><div class="brush-dot" id="brush-dot" style="width:16px;height:16px;background:#3D9E8C"></div></div>
-      </div>
-    </div>
+    <!-- SAVE ============================================================= -->
+    <div class="tab-pane" id="tab-save">
+      <h2 class="section-title">Make it real.</h2>
+      <p class="subtitle">Save your design to revisit later, or submit it to the studio for production review.</p>
 
-    <!-- ── LAYERS ── -->
-    <div class="t-panel" id="tab-layers">
-      <div class="sec">
-        <div class="sec-hd">Layer Stack</div>
-        <div class="layer-list" id="layer-list">
-          <p style="font-size:12px;color:var(--text3);text-align:center;padding:28px 0">No layers yet</p>
-        </div>
-      </div>
-      <div id="xform-panel">
-        <div class="xf-hd">Selected Layer</div>
-        <div class="c-row"><span class="c-lbl">X</span><input type="range" id="sx" min="0" max="100" value="50"/><span class="c-val" id="sx-v">50%</span></div>
-        <div class="c-row"><span class="c-lbl">Y</span><input type="range" id="sy" min="0" max="100" value="50"/><span class="c-val" id="sy-v">50%</span></div>
-        <div class="c-row"><span class="c-lbl">Scale</span><input type="range" id="ss" min="5" max="200" value="40"/><span class="c-val" id="ss-v">40%</span></div>
-        <div class="c-row"><span class="c-lbl">Rotate</span><input type="range" id="sr" min="-180" max="180" value="0"/><span class="c-val" id="sr-v">0°</span></div>
-        <div class="c-row"><span class="c-lbl">Opacity</span><input type="range" id="so" min="0" max="100" value="100"/><span class="c-val" id="so-v">100%</span></div>
-        <button class="btn danger sm" id="btn-del-sel">✕ Delete Selected</button>
-      </div>
-      <button class="btn danger" id="btn-clear-layers" style="margin-top:8px">🗑 Clear All Layers</button>
-    </div>
+      <button class="btn ghost" id="saveDesignBtn" style="margin-bottom:10px;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Save design
+      </button>
+      <button class="btn accent" id="submitDesignBtn">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+        Submit to studio
+      </button>
 
-    <!-- ── SAVE ── -->
-    <div class="t-panel" id="tab-save">
+      <div class="divider-line"></div>
 
-      <!-- Flutter user card — populated by bridge -->
-      <div class="sec">
-        <div class="sec-hd">Signed-in User</div>
-        <div id="flutter-user-card">
-          <!-- populated by updateFlutterUserUI() -->
-          <div class="user-card-loading">
-            <div class="ucl-avatar">…</div>
-            <div>
-              <div style="font-size:12px;font-weight:600;color:var(--text2)">Waiting for app…</div>
-              <div style="font-size:10px;color:var(--text3);margin-top:2px">Open via Senior Year app</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action buttons -->
-      <div class="sec">
-        <div class="sec-hd">Design Actions</div>
-        <div class="save-area">
-          <button class="btn prim" id="btn-save-design">
-            <span>💾</span> Save Design
-          </button>
-          <button class="btn" id="btn-submit-design">
-            <span>🚀</span> Submit to Admin
-          </button>
-        </div>
-        <p style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.8">
-          <strong style="color:var(--text2)">Save Design</strong> — stores this design to your account in Firestore.<br/>
-          <strong style="color:var(--text2)">Submit to Admin</strong> — sends your finalised design for production review.
-        </p>
-      </div>
-
-      <!-- Saved designs list -->
-      <div class="sec">
-        <div class="sec-hd">My Saved Designs</div>
-        <div id="saved-list" style="display:flex;flex-direction:column;gap:8px">
-          <p style="font-size:12px;color:var(--text3);text-align:center;padding:20px 0">
-            Designs will appear here once saved.
-          </p>
-        </div>
+      <div class="section-label">My saved designs</div>
+      <div class="layer-list" id="savedDesignsList">
+        <div class="empty-state">No saved designs yet.</div>
       </div>
     </div>
 
-  </div><!-- /pnl-wrap -->
-
-  <!-- Flutter user status bar (desktop) -->
-  <div id="auth-bar">
-    <div class="auth-avatar" id="auth-avatar">?</div>
-    <div style="flex:1;min-width:0">
-      <div class="auth-name" id="auth-name">Not connected</div>
-      <div id="auth-sub" style="font-size:10px;color:var(--text3);margin-top:1px">Waiting for Senior Year app</div>
-    </div>
-    <div id="auth-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0"></div>
   </div>
-
 </aside>
 
-<!-- Mobile nav -->
-<div id="mob-nav">
-  <button class="mn-btn on" data-tab="color"><span class="icon">🎨</span>Color</button>
-  <button class="mn-btn" data-tab="image"><span class="icon">🖼</span>Image</button>
-  <button class="mn-btn" data-tab="text"><span class="icon">✍️</span>Text</button>
-  <button class="mn-btn" data-tab="draw"><span class="icon">✏️</span>Draw</button>
-  <button class="mn-btn" data-tab="layers"><span class="icon">📚</span>Layers</button>
-  <button class="mn-btn" data-tab="save"><span class="icon">💾</span>Save</button>
+<!-- Toasts -->
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- Confirmation modal -->
+<div class="modal" id="submitModal">
+  <div class="modal-card">
+    <h3>Submitted to studio</h3>
+    <p>Your design has been sent to the production team. You'll receive confirmation by email shortly.</p>
+    <div class="preview" id="submitPreview"></div>
+    <button class="btn" id="closeSubmitModal">Continue designing</button>
+  </div>
 </div>
 
-</div><!-- /app -->
+<!-- Three.js + extras via importmap -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 
-<!-- Flutter Bridge Debug Overlay (dev only — hidden in prod) -->
-<div id="flutter-debug" style="display:none;position:fixed;bottom:80px;left:12px;right:12px;z-index:300;
-  background:rgba(0,0,0,.85);color:#3D9E8C;font-size:10px;font-family:monospace;
-  padding:10px 12px;border-radius:8px;border:1px solid #3D9E8C;
-  backdrop-filter:blur(8px);max-height:120px;overflow-y:auto;
-  white-space:pre-wrap;word-break:break-all">
-  Flutter bridge: waiting…
-</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
-<!-- Toast -->
-<div id="toast"></div>
+/* =========================================================================
+   FIREBASE CONFIG — Replace with your project's keys to enable cloud save
+   ========================================================================= */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+let firebaseReady = false;
+let firestore = null;
+let firebaseUser = { uid: getOrCreateLocalUserId() };
 
-<!-- ════════════════════════════════════════════════════════════
-     JAVASCRIPT
-════════════════════════════════════════════════════════════ -->
-<script>
-'use strict';
+async function initFirebase(){
+  if (FIREBASE_CONFIG.projectId === "YOUR_PROJECT_ID") {
+    console.info('[Atelier] Firebase not configured — using localStorage fallback.');
+    return;
+  }
+  try{
+    const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
+    const { getFirestore, collection, addDoc, setDoc, doc, serverTimestamp, getDocs, query, where, orderBy, limit } =
+      await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+    const { getAuth, signInAnonymously, onAuthStateChanged } =
+      await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js");
+    const app = initializeApp(FIREBASE_CONFIG);
+    firestore = { db: getFirestore(app), addDoc, setDoc, doc, collection, serverTimestamp, getDocs, query, where, orderBy, limit };
+    const auth = getAuth(app);
+    onAuthStateChanged(auth, (u) => { if (u) firebaseUser = u; });
+    await signInAnonymously(auth).catch(()=>{});
+    firebaseReady = true;
+    console.info('[Atelier] Firebase ready.');
+  } catch(err){
+    console.warn('[Atelier] Firebase init failed:', err);
+  }
+}
+function getOrCreateLocalUserId(){
+  let id = localStorage.getItem('atelier_uid');
+  if (!id) { id = 'u_' + Math.random().toString(36).slice(2,12); localStorage.setItem('atelier_uid', id); }
+  return id;
+}
 
-/* ══════════════════════════════════════════════════════════════
-   §0  FIREBASE — Real project config
-   ══════════════════════════════════════════════════════════════ */
-const firebaseConfig = {
-  apiKey:            "AIzaSyAXk5Y5BbQXmPSnmYVmiaecP6uUOWFwlVc",
-  authDomain:        "my-senior-year-92abf.firebaseapp.com",
-  projectId:         "my-senior-year-92abf",
-  storageBucket:     "my-senior-year-92abf.firebasestorage.app",
-  messagingSenderId: "1078590786042",
-  appId:             "1:1078590786042:web:0f247e42a65878fa4c3c43"
+/* =========================================================================
+   STATE
+   ========================================================================= */
+const CANVAS_SIZE = 1024;
+const state = {
+  baseColor: '#f4f3f0',
+  layers: [],            // images & text layers
+  strokes: [],           // freehand strokes
+  selectedId: null,
+  drawMode: false,
+  drawColor: '#0c0c0d',
+  brushSize: 8,
+  bgColor: '#f4f3f0',
 };
 
-let db = null, auth = null;
-let currentUser = null;   // set by Flutter bridge OR Firebase auth listener
+let nextLayerId = 1;
+const undoStack = [];
+const redoStack = [];
+let undoSuspended = false;
 
-try {
-  firebase.initializeApp(firebaseConfig);
-  db   = firebase.firestore();
-  auth = firebase.auth();
-
-  // Listen for Firebase auth state (fallback if bridge is slow)
-  auth.onAuthStateChanged(fbUser => {
-    if (fbUser && !currentUser) {
-      // Firebase resolved a session before Flutter bridge fired
-      _setUser({ uid: fbUser.uid, email: fbUser.email, displayName: fbUser.displayName || '' });
+function pushHistory(){
+  if (undoSuspended) return;
+  undoStack.push(serializeState());
+  if (undoStack.length > 40) undoStack.shift();
+  redoStack.length = 0;
+  refreshUndoButtons();
+}
+function refreshUndoButtons(){
+  document.getElementById('undoBtn').toggleAttribute('disabled', undoStack.length === 0);
+  document.getElementById('redoBtn').toggleAttribute('disabled', redoStack.length === 0);
+}
+function serializeState(){
+  // Strokes can grow large — store points compactly
+  return JSON.stringify({
+    baseColor: state.baseColor,
+    layers: state.layers.map(l => ({...l, _img: undefined, src: l.src || null})),
+    strokes: state.strokes,
+    bgColor: state.bgColor,
+  });
+}
+function restoreState(json){
+  const s = JSON.parse(json);
+  state.baseColor = s.baseColor;
+  state.bgColor = s.bgColor || state.bgColor;
+  state.strokes = s.strokes || [];
+  state.layers = [];
+  // Re-hydrate image layers
+  const promises = (s.layers || []).map(async layerData => {
+    if (layerData.type === 'image' && layerData.src){
+      const img = await loadImage(layerData.src);
+      state.layers.push({ ...layerData, _img: img });
+    } else {
+      state.layers.push({ ...layerData });
     }
   });
-} catch(e) {
-  console.warn('[Firebase] init error:', e.message);
+  return Promise.all(promises).then(() => {
+    rebuildLayerListUI();
+    applyBaseColor();
+    applyBackground();
+    composeTexture();
+  });
 }
 
+/* =========================================================================
+   THREE.JS SCENE
+   ========================================================================= */
+const viewport = document.getElementById('viewport');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(state.bgColor);
 
-/* ══════════════════════════════════════════════════════════════
-   §0b  FLUTTER ↔ WEB BRIDGE
-   ──────────────────────────────────────────────────────────────
-   The Senior Year Flutter app passes user data into this WebView
-   via two mechanisms:
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(0, 0.4, 4.5);
 
-   A) JavascriptChannel named "FlutterBridge" — preferred
-      Flutter calls: FlutterBridge.postMessage(JSON.stringify({...}))
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+viewport.appendChild(renderer.domElement);
 
-   B) URL query params on first load — fallback
-      WebView loads: configurator.html?uid=xxx&email=yyy&name=zzz
+// PMREM environment for nice material reflections
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 
-   C) window.FlutterUserData — injected before page scripts run
-      window.FlutterUserData = { uid, email, displayName }
+// Lighting
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.7);
+scene.add(hemi);
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+keyLight.position.set(3, 4, 5);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+fillLight.position.set(-4, 2, 2);
+scene.add(fillLight);
 
-   The configurator calls back to Flutter via:
-      window.FlutterBridge?.postMessage?.(JSON.stringify({type, payload}))
+// Controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = false;
+controls.minDistance = 1.8;
+controls.maxDistance = 7;
+controls.minPolarAngle = Math.PI * 0.18;
+controls.maxPolarAngle = Math.PI * 0.78;
+controls.rotateSpeed = 0.8;
+controls.zoomSpeed = 0.8;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
-   Firestore writes always use currentUser.uid obtained here.
-   ══════════════════════════════════════════════════════════════ */
-
-function _setUser(data) {
-  if (!data || !data.uid) return;
-  currentUser = data;
-  updateFlutterUserUI(data);
-  loadSavedDesigns();
-  _bridgeLog('User set: ' + data.email);
+function onResize(){
+  const w = viewport.clientWidth;
+  const h = viewport.clientHeight;
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  renderer.setSize(w, h, false);
 }
+window.addEventListener('resize', onResize);
+onResize();
 
-// ── A) JavascriptChannel handler (Flutter calls this)
-window.receiveFlutterUser = function(jsonStr) {
-  try {
-    const data = (typeof jsonStr === 'string') ? JSON.parse(jsonStr) : jsonStr;
-    _setUser(data);
-  } catch(e) { _bridgeLog('Parse error: ' + e.message); }
-};
+/* =========================================================================
+   TEXTURE CANVAS — the design surface
+   ========================================================================= */
+const textureCanvas = document.createElement('canvas');
+textureCanvas.width = CANVAS_SIZE;
+textureCanvas.height = CANVAS_SIZE;
+const tctx = textureCanvas.getContext('2d');
 
-// ── Flutter also posts to window as message event (WebView variant)
-window.addEventListener('message', e => {
-  try {
-    const msg = (typeof e.data === 'string') ? JSON.parse(e.data) : e.data;
-    if (msg && msg.type === 'flutter_user' && msg.uid) _setUser(msg);
-    if (msg && msg.type === 'flutter_theme') {
-      if (msg.theme === 'light' || msg.theme === 'dark') {
-        isDark = msg.theme === 'dark';
-        document.documentElement.setAttribute('data-theme', msg.theme);
-      }
+const designTexture = new THREE.CanvasTexture(textureCanvas);
+designTexture.flipY = false;       // we'll handle Y manually for clean draw
+designTexture.colorSpace = THREE.SRGBColorSpace;
+designTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+designTexture.needsUpdate = true;
+
+let _composeQueued = false;
+function composeTexture(){
+  if (_composeQueued) return;
+  _composeQueued = true;
+  requestAnimationFrame(_doComposeTexture);
+}
+function _doComposeTexture(){
+  _composeQueued = false;
+  // Base
+  tctx.fillStyle = state.baseColor;
+  tctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+
+  // Strokes
+  for (const stroke of state.strokes){
+    if (stroke.points.length < 1) continue;
+    tctx.strokeStyle = stroke.color;
+    tctx.lineWidth = stroke.size;
+    tctx.lineCap = 'round';
+    tctx.lineJoin = 'round';
+    tctx.beginPath();
+    tctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+    for (let i = 1; i < stroke.points.length; i++){
+      tctx.lineTo(stroke.points[i].x, stroke.points[i].y);
     }
-  } catch(_) {}
-});
+    if (stroke.points.length === 1){
+      // single dot
+      tctx.lineTo(stroke.points[0].x + 0.01, stroke.points[0].y + 0.01);
+    }
+    tctx.stroke();
+  }
 
-// ── B) URL query param fallback
-(function checkUrlParams() {
-  const p = new URLSearchParams(window.location.search);
-  const uid   = p.get('uid');
-  const email = p.get('email') || '';
-  const name  = p.get('name')  || '';
-  if (uid) _setUser({ uid, email, displayName: decodeURIComponent(name) });
-})();
+  // Layers
+  for (const layer of state.layers){
+    drawLayer(layer);
+  }
 
-// ── C) Pre-injected window object fallback
-if (window.FlutterUserData && window.FlutterUserData.uid) {
-  _setUser(window.FlutterUserData);
+  // Selection outline (purely visual, no extra layer)
+  const sel = state.layers.find(l => l.id === state.selectedId);
+  if (sel){
+    drawSelectionOutline(sel);
+  }
+
+  designTexture.needsUpdate = true;
 }
 
-// ── Call back to Flutter
-function notifyFlutter(type, payload) {
-  const msg = JSON.stringify({ type, payload });
-  try { if (window.FlutterBridge && window.FlutterBridge.postMessage) window.FlutterBridge.postMessage(msg); } catch(_) {}
-  try { if (window.flutter_inappwebview) window.flutter_inappwebview.callHandler('flutterHandler', msg); } catch(_) {}
-  // For debug
-  _bridgeLog('→ Flutter: ' + type);
-}
-
-// ── Bridge debug logger (shown only when ?debug=1 in URL)
-const _showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
-const _debugEl   = document.getElementById('flutter-debug');
-if (_showDebug) _debugEl.style.display = 'block';
-function _bridgeLog(msg) {
-  if (!_showDebug) return;
-  _debugEl.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n' + _debugEl.textContent;
-}
-
-// ── Update "Signed-in User" card in Save tab
-function updateFlutterUserUI(user) {
-  const card    = document.getElementById('flutter-user-card');
-  const authBar = document.getElementById('auth-bar');
-  const dot     = document.getElementById('auth-status-dot');
-
-  const initial = (user.displayName || user.email || 'U').trim().slice(0,1).toUpperCase();
-  const dispName = user.displayName || user.email || user.uid.slice(0,8);
-
-  // Save tab card
-  card.innerHTML = `
-    <div class="flutter-user-connected">
-      <div class="fuc-avatar">${initial}</div>
-      <div class="fuc-info">
-        <div class="fuc-name">${dispName}</div>
-        <div class="fuc-email">${user.email || user.uid}</div>
-      </div>
-      <div class="fuc-badge">Connected</div>
-    </div>`;
-
-  // Auth bar (desktop sidebar bottom)
-  document.getElementById('auth-avatar').textContent = initial;
-  document.getElementById('auth-avatar').style.background = 'var(--A)';
-  document.getElementById('auth-avatar').style.color = '#fff';
-  document.getElementById('auth-name').textContent   = dispName;
-  document.getElementById('auth-sub').textContent    = user.email || user.uid;
-  if (dot) { dot.style.background = 'var(--A)'; }
-}
-
-
-/* ══════════════════════════════════════════════════════════════
-   §1  LAYOUT & THEME
-══════════════════════════════════════════════════════════════ */
-let isDark = true;
-
-function applyLayout() {
-  const mob = window.innerWidth <= 700 || window.matchMedia('(pointer:coarse)').matches && window.innerWidth < 1000;
-  document.body.classList.toggle('mobile', mob);
-  setTimeout(onResize, 60);
-}
-
-function toggleTheme() {
-  isDark = !isDark;
-  const t = isDark ? 'dark' : 'light';
-  document.documentElement.setAttribute('data-theme', t);
-  const ic = isDark ? '🌙' : '☀️';
-  document.getElementById('hud-theme').textContent = ic;
-  document.getElementById('sb-theme').textContent  = ic;
-}
-
-document.getElementById('hud-theme').onclick = toggleTheme;
-document.getElementById('sb-theme').onclick  = toggleTheme;
-
-applyLayout();
-window.addEventListener('resize', applyLayout);
-
-// Tab nav (sidebar + mobile)
-function activateTab(id) {
-  document.querySelectorAll('.t-tab, .mn-btn').forEach(b => b.classList.toggle('on', b.dataset.tab === id));
-  document.querySelectorAll('.t-panel').forEach(p => p.classList.toggle('on', p.id === 'tab-' + id));
-}
-document.querySelectorAll('.t-tab, .mn-btn').forEach(b => b.onclick = () => activateTab(b.dataset.tab));
-
-
-/* ══════════════════════════════════════════════════════════════
-   §2  CANVAS TEXTURE SYSTEM
-   ──────────────────────────────────────────────────────────────
-   UV→Canvas mapping (flipY = false on texture):
-     canvasX = uv.x * CS
-     canvasY = (1 - uv.y) * CS    ← flip V axis
-
-   This is correct for GLB models exported from Blender.
-   If model appears upside-down, set flipY = true below.
-══════════════════════════════════════════════════════════════ */
-
-const CS = 1024;
-const texCanvas = document.createElement('canvas');
-texCanvas.width = texCanvas.height = CS;
-const ctx = texCanvas.getContext('2d');
-
-let canvasTex = null;   // THREE.CanvasTexture — set in §3
-
-// Texture update throttle — prevents render freezing on rapid updates
-let texDirty = false;
-let texUpdateTimer = null;
-function markTexDirty() {
-  texDirty = true;
-  if (!texUpdateTimer) {
-    texUpdateTimer = requestAnimationFrame(() => {
-      if (canvasTex && texDirty) { canvasTex.needsUpdate = true; texDirty = false; }
-      texUpdateTimer = null;
+function drawLayer(layer){
+  const cx = layer.x * CANVAS_SIZE;
+  const cy = layer.y * CANVAS_SIZE;
+  tctx.save();
+  tctx.translate(cx, cy);
+  tctx.rotate(layer.rotation);
+  tctx.scale(layer.scale, layer.scale);
+  if (layer.type === 'image' && layer._img){
+    const w = layer._img.naturalWidth;
+    const h = layer._img.naturalHeight;
+    tctx.drawImage(layer._img, -w/2, -h/2, w, h);
+  } else if (layer.type === 'text'){
+    tctx.fillStyle = layer.color;
+    tctx.font = `${layer.fontWeight || 600} ${layer.fontSize}px ${layer.font}`;
+    tctx.textAlign = 'center';
+    tctx.textBaseline = 'middle';
+    const lines = String(layer.text || '').split('\n');
+    const lh = layer.fontSize * 1.15;
+    const total = (lines.length - 1) * lh;
+    lines.forEach((line, i) => {
+      tctx.fillText(line, 0, i * lh - total/2);
     });
   }
+  tctx.restore();
 }
 
-// App state
-let baseColor   = '#f5f0e8';
-let layers      = [];
-let drawStrokes = [];
-let selId       = null;
-let nextId      = 1;
-
-// Undo / redo history
-const MAX_HIST = 40;
-let history = [];    // snapshots of {baseColor, layers, drawStrokes}
-let histIdx = -1;
-
-function snapshot() {
-  // Trim redo branch
-  history = history.slice(0, histIdx + 1);
-  history.push({
-    baseColor,
-    layers:      JSON.parse(JSON.stringify(layers.map(l => ({...l, imageEl: l.imageEl ? '__img__' : undefined, _imgSrc: l.imageEl?.src})))),
-    drawStrokes: JSON.parse(JSON.stringify(drawStrokes))
-  });
-  if (history.length > MAX_HIST) history.shift();
-  histIdx = history.length - 1;
-  updateUndoRedo();
-}
-
-function restoreSnapshot(snap) {
-  baseColor = snap.baseColor;
-  // Restore layers — image elements need to be re-looked-up by src
-  layers = snap.layers.map(l => {
-    if (l._imgSrc) {
-      const existing = layerImgCache[l._imgSrc];
-      return { ...l, imageEl: existing || null };
-    }
-    return { ...l };
-  });
-  drawStrokes = snap.drawStrokes;
-  selId = null;
-  hideXform();
-  redraw();
-  refreshLayers();
-}
-
-function undo() {
-  if (histIdx <= 0) return;
-  histIdx--;
-  restoreSnapshot(history[histIdx]);
-  updateUndoRedo();
-  toast('Undone');
-}
-
-function redo() {
-  if (histIdx >= history.length - 1) return;
-  histIdx++;
-  restoreSnapshot(history[histIdx]);
-  updateUndoRedo();
-  toast('Redone');
-}
-
-function updateUndoRedo() {
-  document.getElementById('btn-undo').disabled = histIdx <= 0;
-  document.getElementById('btn-redo').disabled = histIdx >= history.length - 1;
-}
-
-document.getElementById('btn-undo').onclick = undo;
-document.getElementById('btn-redo').onclick = redo;
-
-// Image cache (src → HTMLImageElement) so undo can restore images
-const layerImgCache = {};
-
-
-/* ── Redraw ── */
-function redraw() {
-  ctx.fillStyle = baseColor;
-  ctx.fillRect(0, 0, CS, CS);
-  layers.forEach(paintLayer);
-  drawStrokes.forEach(paintStroke);
-  if (selId !== null) {
-    const sel = layers.find(l => l.id === selId);
-    if (sel) paintGizmo(sel);
-  }
-  markTexDirty();
-}
-
-function paintLayer(L) {
-  ctx.save();
-  ctx.translate(L.x * CS, L.y * CS);
-  ctx.rotate((L.rotate || 0) * Math.PI / 180);
-  ctx.globalAlpha = L.opacity ?? 1;
-  if (L.type === 'image' && L.imageEl) {
-    const sw = CS * (L.scale / 100);
-    const sh = (L.imageEl.naturalHeight / L.imageEl.naturalWidth) * sw;
-    ctx.drawImage(L.imageEl, -sw / 2, -sh / 2, sw, sh);
-  }
-  if (L.type === 'text') {
-    ctx.font         = `bold ${L.size}px "${L.font}"`;
-    ctx.fillStyle    = L.color;
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(L.text, 0, 0);
-  }
-  ctx.restore();
-}
-
-function paintStroke(s) {
-  if (!s.points || s.points.length < 2) return;
-  ctx.save();
-  ctx.strokeStyle = s.color; ctx.lineWidth = s.size;
-  ctx.globalAlpha = s.opacity; ctx.lineCap = ctx.lineJoin = 'round';
-  ctx.beginPath(); ctx.moveTo(s.points[0].x, s.points[0].y);
-  for (let i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
-  ctx.stroke(); ctx.restore();
-}
-
-function paintGizmo(L) {
-  ctx.save();
-  ctx.translate(L.x * CS, L.y * CS);
-  ctx.rotate((L.rotate || 0) * Math.PI / 180);
-  let w, h;
-  if (L.type === 'image' && L.imageEl) {
-    w = CS * (L.scale / 100);
-    h = (L.imageEl.naturalHeight / L.imageEl.naturalWidth) * w;
-  } else if (L.type === 'text') {
-    ctx.font = `bold ${L.size}px "${L.font}"`;
-    w = ctx.measureText(L.text).width + 28; h = L.size + 20;
-  } else { w = h = 80; }
-  ctx.strokeStyle = '#3D9E8C'; ctx.lineWidth = 3;
-  ctx.setLineDash([10, 6]); ctx.globalAlpha = .85;
-  ctx.strokeRect(-w/2, -h/2, w, h);
-  ctx.setLineDash([]); ctx.fillStyle = '#3D9E8C';
-  [[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]].forEach(([hx,hy]) => {
-    ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI*2); ctx.fill();
-  });
-  ctx.restore();
-}
-
-function clearAll() {
-  layers = []; drawStrokes = []; selId = null;
-  hideXform(); snapshot(); redraw(); refreshLayers();
-  toast('Canvas cleared');
-}
-
-redraw();
-snapshot(); // initial empty snapshot
-
-
-/* ══════════════════════════════════════════════════════════════
-   §3  THREE.JS SCENE
-══════════════════════════════════════════════════════════════ */
-const threeCanvas = document.getElementById('three-canvas');
-const renderer = new THREE.WebGLRenderer({
-  canvas: threeCanvas, antialias: true, alpha: true, powerPreference: 'default'
-});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
-// Encoding compat r134 vs r128
-try { renderer.outputColorSpace = THREE.SRGBColorSpace; } catch(e) { renderer.outputEncoding = 3001; }
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
-
-const scene  = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, 1, 0.01, 100);
-camera.position.set(0, 0.5, 3);
-
-const orbitCtrl = new THREE.OrbitControls(camera, threeCanvas);
-orbitCtrl.enablePan    = false;
-orbitCtrl.enableDamping = true;
-orbitCtrl.dampingFactor = 0.08;
-orbitCtrl.minDistance  = 0.3;
-orbitCtrl.maxDistance  = 10;
-orbitCtrl.rotateSpeed  = 0.75;
-
-// Lights
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-const kl = new THREE.DirectionalLight(0xfff8e7, 1.4);
-kl.position.set(3, 5, 4); kl.castShadow = true;
-kl.shadow.mapSize.set(512, 512); scene.add(kl);
-const fl = new THREE.DirectionalLight(0xd0e8ff, 0.5); fl.position.set(-3,1,2); scene.add(fl);
-const rl = new THREE.DirectionalLight(0xffffff, 0.3); rl.position.set(0,-2,-3); scene.add(rl);
-scene.add(new THREE.HemisphereLight(0x3D9E8C, 0x331100, 0.2));
-
-// Canvas texture
-canvasTex = new THREE.CanvasTexture(texCanvas);
-canvasTex.flipY = false;   // canvas top-left = UV(0,0); we flip V in getUV()
-try { canvasTex.colorSpace = THREE.SRGBColorSpace; } catch(e) { canvasTex.encoding = 3001; }
-
-let modelMeshes = [], modelRoot = null;
-
-// Loader helpers
-const ldFill   = document.getElementById('ld-fill');
-const ldStatus = document.getElementById('ld-status');
-
-function ldProgress(p) { ldFill.style.width = p + '%'; }
-function ldMsg(t) { ldStatus.textContent = t; }
-function hideLoader() {
-  const el = document.getElementById('loader');
-  el.classList.add('out');
-  setTimeout(() => el.remove(), 600);
-}
-
-ldMsg('Checking for model…');
-
-fetch('model.glb', { method: 'HEAD' })
-  .then(r => { if (!r.ok) throw 0; loadGLB(); })
-  .catch(() => loadFallback());
-
-function loadGLB() {
-  ldMsg('Loading 3D model…');
-  const loader = new THREE.GLTFLoader();
-  loader.load('model.glb',
-    gltf => {
-      modelRoot = gltf.scene;
-      const box = new THREE.Box3().setFromObject(modelRoot);
-      const sz  = new THREE.Vector3(); box.getSize(sz);
-      const ctr = new THREE.Vector3(); box.getCenter(ctr);
-      const sc  = 1.8 / Math.max(sz.x, sz.y, sz.z, .001);
-      modelRoot.scale.setScalar(sc);
-      modelRoot.position.copy(ctr).multiplyScalar(-sc);
-
-      modelRoot.traverse(n => {
-        if (!n.isMesh) return;
-        n.castShadow = n.receiveShadow = true;
-        const apply = m => { const c=m.clone(); c.map=canvasTex; c.needsUpdate=true; return c; };
-        n.material = Array.isArray(n.material) ? n.material.map(apply) : apply(n.material);
-        modelMeshes.push(n);
-      });
-      scene.add(modelRoot);
-      hideLoader();
-      toast('Model loaded ✓');
-    },
-    xhr => { if (xhr.total) { const p=Math.round(xhr.loaded/xhr.total*100); ldProgress(p); ldMsg(`Loading… ${p}%`); } },
-    err => { console.error(err); loadFallback(); }
-  );
-}
-
-function loadFallback() {
-  ldMsg('Using demo sphere');
-  const geo = new THREE.SphereGeometry(1, 48, 48);
-  const mat = new THREE.MeshStandardMaterial({ map: canvasTex, roughness: 0.75 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
-  modelMeshes = [mesh];
-  modelRoot = new THREE.Group(); modelRoot.add(mesh); scene.add(modelRoot);
-  hideLoader();
-  toast('Demo mode — place model.glb to load your model');
-}
-
-// Reset camera
-document.getElementById('hud-reset').onclick = () => {
-  camera.position.set(0, 0.5, 3);
-  orbitCtrl.target.set(0,0,0); orbitCtrl.update();
-};
-
-// Resize
-function onResize() {
-  const vp = document.getElementById('viewport');
-  if (!vp) return;
-  renderer.setSize(vp.clientWidth, vp.clientHeight, false);
-  camera.aspect = vp.clientWidth / vp.clientHeight;
-  camera.updateProjectionMatrix();
-}
-window.addEventListener('resize', onResize); onResize();
-
-// Render loop — throttle texture updates here
-(function loop() {
-  requestAnimationFrame(loop);
-  orbitCtrl.update();
-  renderer.render(scene, camera);
-})();
-
-
-/* ══════════════════════════════════════════════════════════════
-   §4  MATERIAL & BACKGROUND CONTROLS
-══════════════════════════════════════════════════════════════ */
-function applyMat() {
-  const r = document.getElementById('roughness').value / 100;
-  const m = document.getElementById('metalness').value / 100;
-  modelMeshes.forEach(mesh => {
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    mats.forEach(mt => { mt.roughness = r; mt.metalness = m; mt.needsUpdate = true; });
-  });
-}
-rng('roughness','roughness-v', v=>v.toFixed(2), applyMat);
-rng('metalness','metalness-v', v=>v.toFixed(2), applyMat);
-
-// Background options
-const BG_OPTS = [
-  { color:'#0a0a0c', label:'Black' },
-  { color:'#f2f3f7', label:'White' },
-  { color:'#1a2a2a', label:'Dark Teal' },
-  { color:'#1a1a2e', label:'Night' },
-  { color:'#f5ede0', label:'Warm' },
-];
-const bgContainer = document.getElementById('bg-opts');
-BG_OPTS.forEach(opt => {
-  const b = document.createElement('div');
-  b.className = 'bg-opt';
-  b.style.background = opt.color;
-  b.title = opt.label;
-  b.onclick = () => {
-    document.getElementById('vp-bg').style.background = opt.color;
-    document.querySelector('#three-canvas').style.background = opt.color;
-    bgContainer.querySelectorAll('.bg-opt').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-  };
-  bgContainer.appendChild(b);
-});
-document.getElementById('bg-custom').oninput = function() {
-  document.getElementById('vp-bg').style.background = this.value;
-  bgContainer.querySelectorAll('.bg-opt').forEach(x=>x.classList.remove('on'));
-};
-
-
-/* ══════════════════════════════════════════════════════════════
-   §5  COLOR SYSTEM
-══════════════════════════════════════════════════════════════ */
-const PRESETS = [
-  '#ffffff','#000000','#f5f0e8','#3D9E8C',
-  '#ff5f5f','#3a7bd5','#f7c59f','#e8e8e8',
-  '#2c3e50','#27ae60','#e74c3c','#9b59b6',
-  '#f39c12','#1abc9c','#e67e22','#ff6b9d',
-];
-const swRow = document.getElementById('swatch-row');
-PRESETS.forEach(hex => {
-  const b = document.createElement('div');
-  b.className = 'sw'; b.style.background = hex; b.title = hex;
-  b.onclick = () => {
-    setBase(hex);
-    document.getElementById('base-color').value = hex;
-    document.getElementById('base-hex').textContent = hex;
-    swRow.querySelectorAll('.sw').forEach(s=>s.classList.remove('on'));
-    b.classList.add('on');
-  };
-  swRow.appendChild(b);
-});
-
-document.getElementById('base-color').oninput = function() {
-  document.getElementById('base-hex').textContent = this.value;
-  setBase(this.value);
-  swRow.querySelectorAll('.sw').forEach(s=>s.classList.remove('on'));
-};
-
-function setBase(hex) {
-  baseColor = hex;
-  redraw();
-  snapshot();
-}
-
-document.getElementById('sb-clear').onclick = () => {
-  if (!confirm('Clear all layers and reset?')) return;
-  clearAll();
-};
-
-
-/* ══════════════════════════════════════════════════════════════
-   §6  IMAGE UPLOAD
-══════════════════════════════════════════════════════════════ */
-let activeImg = null;
-const dz  = document.getElementById('dropzone');
-const imgF = document.getElementById('img-file');
-
-dz.onclick = () => imgF.click();
-imgF.onchange = e => handleImg(e.target.files[0]);
-dz.ondragover = e => { e.preventDefault(); dz.classList.add('over'); };
-dz.ondragleave = () => dz.classList.remove('over');
-dz.ondrop = e => { e.preventDefault(); dz.classList.remove('over'); handleImg(e.dataTransfer.files[0]); };
-
-function handleImg(file) {
-  if (!file || !file.type.startsWith('image/')) return;
-  const url = URL.createObjectURL(file);
-  const img  = new Image();
-  img.onload = () => {
-    layerImgCache[url] = img;
-    const L = { id:nextId++, type:'image', imageEl:img, _imgSrc:url, x:.5, y:.5, scale:40, rotate:0, opacity:1 };
-    layers.push(L); activeImg = L; selId = L.id;
-    document.getElementById('img-xform').style.display = 'block';
-    syncImgSliders(L);
-    snapshot(); redraw(); refreshLayers();
-    toast('Image added — drag or pinch on model');
-  };
-  img.src = url;
-}
-
-function syncImgSliders(L) {
-  sv('ix','ix-v',Math.round(L.x*100),v=>v+'%');
-  sv('iy','iy-v',Math.round(L.y*100),v=>v+'%');
-  sv('is','is-v',L.scale,v=>v+'%');
-  sv('ir','ir-v',L.rotate||0,v=>v+'°');
-  sv('io','io-v',Math.round((L.opacity??1)*100),v=>v+'%');
-}
-
-[['ix','ix-v','x',v=>v+'%',v=>v/100],
- ['iy','iy-v','y',v=>v+'%',v=>v/100],
- ['is','is-v','scale',v=>v+'%',v=>parseFloat(v)],
- ['ir','ir-v','rotate',v=>v+'°',v=>parseFloat(v)],
- ['io','io-v','opacity',v=>v+'%',v=>v/100],
-].forEach(([id,vid,prop,fmt,xfm]) => {
-  document.getElementById(id).oninput = function() {
-    document.getElementById(vid).textContent = fmt(this.value);
-    if (!activeImg) return;
-    activeImg[prop] = xfm(this.value); selId = activeImg.id;
-    redraw();
-  };
-  document.getElementById(id).onchange = () => snapshot();
-});
-
-
-/* ══════════════════════════════════════════════════════════════
-   §7  TEXT TOOL
-══════════════════════════════════════════════════════════════ */
-let activeTxt = null;
-rng('txt-size','txt-size-v', v=>v+'px');
-rng('txt-op','txt-op-v', v=>v+'%');
-rng('tx','tx-v', v=>v+'%');
-rng('ty','ty-v', v=>v+'%');
-rng('trot','trot-v', v=>v+'°');
-
-document.getElementById('btn-add-txt').onclick = () => {
-  const txt = document.getElementById('txt-input').value.trim();
-  if (!txt) return toast('Enter some text first');
-  const L = {
-    id:nextId++, type:'text', text:txt,
-    color: document.getElementById('txt-color').value,
-    font:  document.getElementById('txt-font').value,
-    size:  parseInt(document.getElementById('txt-size').value),
-    opacity: document.getElementById('txt-op').value/100,
-    x: document.getElementById('tx').value/100,
-    y: document.getElementById('ty').value/100,
-    rotate: parseFloat(document.getElementById('trot').value),
-    scale: 40
-  };
-  layers.push(L); activeTxt = L; selId = L.id;
-  const ed = document.getElementById('txt-edit');
-  ed.style.display = 'flex'; ed.style.flexDirection = 'column'; ed.style.gap = '8px';
-  snapshot(); redraw(); refreshLayers();
-  toast(`Text added`);
-};
-
-['tx','ty','txt-size','txt-color','txt-font','trot','txt-op'].forEach(id => {
-  document.getElementById(id).oninput = () => { if (activeTxt) { applyTxt(); redraw(); } };
-  document.getElementById(id).onchange = () => { if (activeTxt) snapshot(); };
-});
-document.getElementById('txt-input').oninput = () => { if (activeTxt) { applyTxt(); redraw(); } };
-
-function applyTxt() {
-  const t = document.getElementById('txt-input').value.trim();
-  activeTxt.text    = t || activeTxt.text;
-  activeTxt.color   = document.getElementById('txt-color').value;
-  activeTxt.font    = document.getElementById('txt-font').value;
-  activeTxt.size    = parseInt(document.getElementById('txt-size').value);
-  activeTxt.opacity = document.getElementById('txt-op').value/100;
-  activeTxt.x       = document.getElementById('tx').value/100;
-  activeTxt.y       = document.getElementById('ty').value/100;
-  activeTxt.rotate  = parseFloat(document.getElementById('trot').value);
-  selId = activeTxt.id;
-}
-
-document.getElementById('btn-update-txt').onclick = () => {
-  if (!activeTxt) return;
-  applyTxt(); snapshot(); redraw(); refreshLayers(); toast('Text updated');
-};
-
-
-/* ══════════════════════════════════════════════════════════════
-   §8  RAYCASTER — UV → CANVAS PIXEL
-   ──────────────────────────────────────────────────────────────
-   FIX: canvasY = (1 - uv.y) * CS
-   This correctly inverts the UV V axis into canvas Y axis.
-   With flipY=false on CanvasTexture, this is the only correct formula.
-══════════════════════════════════════════════════════════════ */
-const raycaster = new THREE.Raycaster();
-const ndcV      = new THREE.Vector2();
-
-function getUV(e) {
-  const rect = threeCanvas.getBoundingClientRect();
-  const src  = e.touches ? e.touches[0] : e;
-  ndcV.x =  ((src.clientX - rect.left) / rect.width)  * 2 - 1;
-  ndcV.y = -((src.clientY - rect.top)  / rect.height) * 2 + 1;
-  raycaster.setFromCamera(ndcV, camera);
-  const hits = raycaster.intersectObjects(modelMeshes, true);
-  if (!hits.length || !hits[0].uv) return null;
-  return {
-    x:  hits[0].uv.x * CS,
-    y: (1 - hits[0].uv.y) * CS   // ← CRITICAL FIX: flip V
-  };
-}
-
-
-/* ══════════════════════════════════════════════════════════════
-   §9  DRAW TOOL
-══════════════════════════════════════════════════════════════ */
-let drawMode  = false;
-let liveStroke = null;
-const drawCursor = document.getElementById('draw-cursor');
-const drawBadge  = document.getElementById('draw-badge');
-
-function setDraw(on) {
-  drawMode = on;
-  orbitCtrl.enabled = !on;
-  const btnD = document.getElementById('btn-draw');
-  const hudD = document.getElementById('hud-draw');
-  btnD.className   = 'btn' + (on ? ' draw-on' : '');
-  btnD.textContent = on ? '⏹ Disable Draw Mode' : '✏️ Enable Draw Mode';
-  hudD.classList.toggle('on', on);
-  drawBadge.style.display = on ? 'block' : 'none';
-  drawCursor.style.display = on ? 'block' : 'none';
-  if (!on) { selId = null; redraw(); }
-  toast(on ? 'Draw mode ON' : 'Draw mode OFF');
-}
-
-document.getElementById('btn-draw').onclick = () => setDraw(!drawMode);
-document.getElementById('hud-draw').onclick  = () => setDraw(!drawMode);
-
-// Brush UI
-document.getElementById('br-size').oninput = function() {
-  const s = parseInt(this.value);
-  document.getElementById('br-size-v').textContent = s+'px';
-  const d = Math.min(s, 60);
-  drawCursor.style.width  = s+'px'; drawCursor.style.height = s+'px';
-  document.getElementById('brush-dot').style.width  = d+'px';
-  document.getElementById('brush-dot').style.height = d+'px';
-};
-document.getElementById('br-op').oninput = function() {
-  document.getElementById('br-op-v').textContent = this.value+'%';
-};
-document.getElementById('br-color').oninput = function() {
-  document.getElementById('brush-dot').style.background = this.value;
-  drawCursor.style.borderColor = this.value;
-};
-
-// Init draw cursor size
-const initBrush = parseInt(document.getElementById('br-size').value);
-drawCursor.style.width = drawCursor.style.height = initBrush+'px';
-
-
-/* ══════════════════════════════════════════════════════════════
-   §10  UNIFIED POINTER HANDLER
-   ──────────────────────────────────────────────────────────────
-   Modes: 'draw' | 'drag' | 'pinch' | 'orbit'
-══════════════════════════════════════════════════════════════ */
-let pMode      = 'orbit';
-let dragL      = null, dragStartUV = null, dragStartXY = null;
-let pinchL     = null, pinchStart  = null;
-
-function uvNorm(uv) { return { x: uv.x/CS, y: uv.y/CS }; }
-
-function nearestLayer(nx, ny) {
-  let best = null, bd = 0.16;
-  layers.forEach(L => {
-    const d = Math.hypot(L.x - nx, L.y - ny);
-    if (d < bd) { bd = d; best = L; }
-  });
-  return best;
-}
-
-function pinchInfo(touches) {
-  const a = touches[0], b = touches[1];
-  return {
-    dist:  Math.hypot(b.clientX-a.clientX, b.clientY-a.clientY),
-    angle: Math.atan2(b.clientY-a.clientY, b.clientX-a.clientX) * 180/Math.PI,
-    cx: (a.clientX+b.clientX)/2, cy: (a.clientY+b.clientY)/2
-  };
-}
-
-function moveCursor(e) {
-  const rect = threeCanvas.getBoundingClientRect();
-  const src  = e.touches ? e.touches[0] : e;
-  drawCursor.style.left = (src.clientX-rect.left)+'px';
-  drawCursor.style.top  = (src.clientY-rect.top)+'px';
-}
-
-// ── START ──
-function onStart(e) {
-  const nTouch = e.touches ? e.touches.length : 1;
-
-  // Two-finger pinch to transform selected layer
-  if (nTouch === 2 && selId !== null) {
-    const L = layers.find(l=>l.id===selId);
-    if (L) {
-      pMode = 'pinch'; pinchL = L;
-      pinchStart = pinchInfo(e.touches);
-      pinchStart.scale0  = L.scale;
-      pinchStart.rotate0 = L.rotate || 0;
-      orbitCtrl.enabled  = false;
-      e.preventDefault(); return;
-    }
-  }
-
-  if (drawMode) {
-    pMode = 'draw';
-    const uv = getUV(e); if (!uv) return;
-    liveStroke = {
-      color:   document.getElementById('br-color').value,
-      size:    parseInt(document.getElementById('br-size').value),
-      opacity: document.getElementById('br-op').value/100,
-      points:  [uv]
+function getLayerBounds(layer){
+  // Returns half-width/half-height in canvas px (after scale)
+  if (layer.type === 'image' && layer._img){
+    return {
+      hw: (layer._img.naturalWidth / 2) * layer.scale,
+      hh: (layer._img.naturalHeight / 2) * layer.scale,
     };
-    e.preventDefault(); return;
-  }
-
-  // Drag layer
-  const uv = getUV(e);
-  if (uv) {
-    const n = uvNorm(uv);
-    const found = nearestLayer(n.x, n.y);
-    if (found) {
-      pMode = 'drag'; dragL = found;
-      dragStartUV = {...n}; dragStartXY = {x:found.x, y:found.y};
-      selId = found.id; orbitCtrl.enabled = false;
-      syncXform(found); redraw(); refreshLayers();
-      e.preventDefault(); return;
+  } else if (layer.type === 'text'){
+    tctx.save();
+    tctx.font = `${layer.fontWeight || 600} ${layer.fontSize}px ${layer.font}`;
+    const lines = String(layer.text || '').split('\n');
+    let maxW = 0;
+    for (const l of lines){
+      const m = tctx.measureText(l);
+      if (m.width > maxW) maxW = m.width;
     }
+    const lh = layer.fontSize * 1.15;
+    const totalH = lines.length * lh;
+    tctx.restore();
+    return {
+      hw: (maxW / 2) * layer.scale + 8,
+      hh: (totalH / 2) * layer.scale + 8,
+    };
   }
-  if (selId !== null) { selId = null; redraw(); refreshLayers(); }
-  pMode = 'orbit';
+  return { hw: 50, hh: 50 };
 }
 
-// ── MOVE ──
-function onMove(e) {
-  if (drawMode) moveCursor(e);
+function drawSelectionOutline(layer){
+  const cx = layer.x * CANVAS_SIZE;
+  const cy = layer.y * CANVAS_SIZE;
+  const { hw, hh } = getLayerBounds(layer);
+  tctx.save();
+  tctx.translate(cx, cy);
+  tctx.rotate(layer.rotation);
+  tctx.strokeStyle = 'rgba(61,158,140,0.95)';
+  tctx.lineWidth = 4;
+  tctx.setLineDash([14, 10]);
+  tctx.strokeRect(-hw, -hh, hw*2, hh*2);
+  tctx.setLineDash([]);
+  // corner dots
+  tctx.fillStyle = 'rgba(61,158,140,1)';
+  for (const [dx, dy] of [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]]){
+    tctx.beginPath();
+    tctx.arc(dx, dy, 8, 0, Math.PI*2);
+    tctx.fill();
+  }
+  tctx.restore();
+}
 
-  if (pMode === 'draw') {
-    e.preventDefault();
-    const uv = getUV(e); if (!uv || !liveStroke) return;
-    liveStroke.points.push(uv);
-    const pts = liveStroke.points;
-    if (pts.length >= 2) {
-      const a=pts[pts.length-2], b=pts[pts.length-1];
-      ctx.save();
-      ctx.strokeStyle=liveStroke.color; ctx.lineWidth=liveStroke.size;
-      ctx.globalAlpha=liveStroke.opacity; ctx.lineCap=ctx.lineJoin='round';
-      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-      ctx.restore();
-      markTexDirty();
+/* =========================================================================
+   GARMENT MODEL — load model.glb, fallback to procedural T-shirt
+   ========================================================================= */
+let garmentRoot = null;
+let garmentMaterial = null;
+
+const loader = new GLTFLoader();
+
+function buildProceduralShirt(){
+  // Stylized t-shirt silhouette via Shape + ExtrudeGeometry
+  const shape = new THREE.Shape();
+  shape.moveTo(-1.0, -1.4);
+  shape.lineTo(-1.0, 0.5);
+  shape.lineTo(-1.55, 0.7);
+  shape.lineTo(-1.55, 1.1);
+  shape.lineTo(-0.45, 1.1);
+  shape.bezierCurveTo(-0.35, 1.32, 0.35, 1.32, 0.45, 1.1);
+  shape.lineTo(1.55, 1.1);
+  shape.lineTo(1.55, 0.7);
+  shape.lineTo(1.0, 0.5);
+  shape.lineTo(1.0, -1.4);
+  shape.lineTo(0.92, -1.45);
+  shape.lineTo(-0.92, -1.45);
+  shape.closePath();
+
+  const geom = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.35,
+    bevelEnabled: true,
+    bevelThickness: 0.05,
+    bevelSize: 0.05,
+    bevelSegments: 4,
+    curveSegments: 24,
+  });
+  geom.translate(0, -0.05, -0.175);
+
+  // Recompute UVs so the front faces use 0..1 over the bounding box.
+  geom.computeBoundingBox();
+  const bb = geom.boundingBox;
+  const sizeX = bb.max.x - bb.min.x;
+  const sizeY = bb.max.y - bb.min.y;
+  const pos = geom.attributes.position;
+  const uvs = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++){
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    // u from x, v from y (flipped because flipY=false in texture)
+    const u = (x - bb.min.x) / sizeX;
+    const v = 1 - (y - bb.min.y) / sizeY;
+    uvs[i*2] = u;
+    uvs[i*2+1] = v;
+  }
+  geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geom.computeVertexNormals();
+
+  const mat = new THREE.MeshPhysicalMaterial({
+    map: designTexture,
+    roughness: 0.85,
+    metalness: 0,
+    sheen: 0.3,
+    sheenRoughness: 0.7,
+    sheenColor: new THREE.Color(0xffffff),
+  });
+
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.name = 'GarmentFallback';
+  return { root: mesh, material: mat };
+}
+
+function attachDesignToModel(root){
+  let firstMat = null;
+  root.traverse(node => {
+    if (node.isMesh){
+      // Replace the material with one that uses our design texture as map
+      const baseMat = node.material;
+      const m = new THREE.MeshPhysicalMaterial({
+        map: designTexture,
+        roughness: baseMat?.roughness ?? 0.85,
+        metalness: 0,
+        sheen: 0.25,
+        sheenRoughness: 0.7,
+      });
+      node.material = m;
+      if (!firstMat) firstMat = m;
+    }
+  });
+  return firstMat;
+}
+
+function fitCameraToObject(object, fitOffset = 1.45){
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  // Center at origin
+  object.position.sub(center);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI/180);
+  const dist = (maxDim / 2) / Math.tan(fov/2) * fitOffset;
+  camera.position.set(0, size.y * 0.05, dist);
+  camera.near = dist / 100;
+  camera.far = dist * 100;
+  camera.updateProjectionMatrix();
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
+async function loadGarment(){
+  // Try the user-provided GLB
+  let usedFallback = false;
+  try {
+    const gltf = await new Promise((resolve, reject) => {
+      loader.load('model.glb', resolve, undefined, reject);
+    });
+    garmentRoot = gltf.scene;
+    garmentMaterial = attachDesignToModel(garmentRoot);
+  } catch(err){
+    console.info('[Atelier] model.glb not found — using procedural shirt fallback.');
+    const built = buildProceduralShirt();
+    garmentRoot = built.root;
+    garmentMaterial = built.material;
+    usedFallback = true;
+  }
+  scene.add(garmentRoot);
+  fitCameraToObject(garmentRoot, usedFallback ? 1.55 : 1.5);
+  composeTexture();
+}
+
+/* =========================================================================
+   RAYCAST → UV mapping (with Y inversion fix)
+   ========================================================================= */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+
+function getUVFromEvent(clientX, clientY){
+  if (!garmentRoot) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(ndc, camera);
+  const hits = raycaster.intersectObject(garmentRoot, true);
+  for (const hit of hits){
+    if (hit.uv){
+      // With texture.flipY=false (the GLTF convention), canvas (px,py) samples UV (px/W, py/H).
+      // So canvasY maps directly to uv.v — no inversion. This is what fixes the inverted-drawing bug.
+      return {
+        u: hit.uv.x,
+        v: hit.uv.y,
+        canvasX: hit.uv.x * CANVAS_SIZE,
+        canvasY: hit.uv.y * CANVAS_SIZE,
+        point: hit.point,
+        face: hit.face,
+      };
+    }
+  }
+  return null;
+}
+
+/* =========================================================================
+   GESTURE / INTERACTION SYSTEM
+   ========================================================================= */
+const interaction = {
+  active: false,
+  pointers: new Map(),     // pointerId -> {x, y, uv}
+  layerStart: null,        // initial state of selected layer at gesture start
+  initialDistance: 0,
+  initialAngle: 0,
+  initialUV: null,         // canvas-space starting position
+  mode: null,              // 'move' | 'transform' | 'draw' | null
+  lastDrawUV: null,
+  currentStroke: null,
+};
+
+function pointerData(e){
+  const list = [...interaction.pointers.values()];
+  if (list.length === 1){
+    return { x: list[0].x, y: list[0].y };
+  } else if (list.length === 2){
+    return {
+      x: (list[0].x + list[1].x) / 2,
+      y: (list[0].y + list[1].y) / 2,
+      dx: list[1].x - list[0].x,
+      dy: list[1].y - list[0].y,
+    };
+  }
+  return null;
+}
+
+function distance(p1, p2){ return Math.hypot(p2.x-p1.x, p2.y-p1.y); }
+function angle(p1, p2){ return Math.atan2(p2.y-p1.y, p2.x-p1.x); }
+
+function pickLayer(canvasX, canvasY){
+  // top-most layer first
+  for (let i = state.layers.length - 1; i >= 0; i--){
+    const l = state.layers[i];
+    const cx = l.x * CANVAS_SIZE;
+    const cy = l.y * CANVAS_SIZE;
+    const dx = canvasX - cx;
+    const dy = canvasY - cy;
+    const cos = Math.cos(-l.rotation);
+    const sin = Math.sin(-l.rotation);
+    const lx = dx * cos - dy * sin;
+    const ly = dx * sin + dy * cos;
+    const { hw, hh } = getLayerBounds(l);
+    if (Math.abs(lx) <= hw && Math.abs(ly) <= hh){
+      return l;
+    }
+  }
+  return null;
+}
+
+const dom = renderer.domElement;
+dom.style.touchAction = 'none';
+
+dom.addEventListener('pointerdown', onPointerDown);
+dom.addEventListener('pointermove', onPointerMove);
+dom.addEventListener('pointerup', onPointerUp);
+dom.addEventListener('pointercancel', onPointerUp);
+dom.addEventListener('pointerleave', onPointerUp);
+
+function onPointerDown(e){
+  dom.setPointerCapture(e.pointerId);
+  interaction.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (state.drawMode){
+    const uv = getUVFromEvent(e.clientX, e.clientY);
+    if (uv){
+      controls.enabled = false;
+      interaction.mode = 'draw';
+      interaction.currentStroke = {
+        color: state.drawColor,
+        size: state.brushSize,
+        points: [{ x: uv.canvasX, y: uv.canvasY }],
+      };
+      state.strokes.push(interaction.currentStroke);
+      composeTexture();
     }
     return;
   }
 
-  if (pMode === 'drag' && dragL) {
-    e.preventDefault();
-    const uv = getUV(e); if (!uv) return;
-    const n = uvNorm(uv);
-    dragL.x = Math.max(.01, Math.min(.99, dragStartXY.x + n.x - dragStartUV.x));
-    dragL.y = Math.max(.01, Math.min(.99, dragStartXY.y + n.y - dragStartUV.y));
-    syncXform(dragL);
-    if (dragL===activeImg) syncImgSliders(dragL);
-    redraw(); return;
+  // Layer transform: if 1st pointer hits a layer, select & start drag
+  if (interaction.pointers.size === 1){
+    const uv = getUVFromEvent(e.clientX, e.clientY);
+    if (uv){
+      const hit = pickLayer(uv.canvasX, uv.canvasY);
+      if (hit){
+        state.selectedId = hit.id;
+        rebuildLayerListUI();
+        renderSelectedTransformUI();
+        interaction.mode = 'move';
+        interaction.layerStart = { ...hit };
+        interaction.initialUV = { u: uv.u, v: uv.v };
+        controls.enabled = false;
+        showModeChip(`Editing ${hit.type}`);
+        composeTexture();
+        return;
+      } else if (state.selectedId !== null){
+        // tapped empty area = deselect
+        state.selectedId = null;
+        rebuildLayerListUI();
+        renderSelectedTransformUI();
+        composeTexture();
+      }
+    }
   }
 
-  if (pMode === 'pinch' && pinchL && e.touches && e.touches.length===2) {
-    e.preventDefault();
-    const now = pinchInfo(e.touches);
-    pinchL.scale  = Math.max(5, Math.min(200, pinchStart.scale0  * (now.dist / pinchStart.dist)));
-    pinchL.rotate = pinchStart.rotate0 + (now.angle - pinchStart.angle);
-    syncXform(pinchL);
-    if (pinchL===activeImg) syncImgSliders(pinchL);
-    redraw(); return;
+  // Two pointers transform of selected layer
+  if (interaction.pointers.size === 2 && state.selectedId !== null){
+    const sel = state.layers.find(l => l.id === state.selectedId);
+    if (sel){
+      const pts = [...interaction.pointers.values()];
+      interaction.mode = 'transform';
+      interaction.initialDistance = distance(pts[0], pts[1]);
+      interaction.initialAngle = angle(pts[0], pts[1]);
+      interaction.layerStart = { ...sel };
+      controls.enabled = false;
+      showModeChip(`Pinch & rotate`);
+    }
   }
 }
 
-// ── END ──
-function onEnd() {
-  if (pMode === 'draw' && liveStroke) {
-    if (liveStroke.points.length > 1) { drawStrokes.push(liveStroke); snapshot(); refreshLayers(); }
-    liveStroke = null;
+function onPointerMove(e){
+  if (!interaction.pointers.has(e.pointerId)) return;
+  interaction.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  if (interaction.mode === 'draw' && interaction.currentStroke){
+    const uv = getUVFromEvent(e.clientX, e.clientY);
+    if (uv){
+      // Smooth: only push if moved enough
+      const last = interaction.currentStroke.points[interaction.currentStroke.points.length - 1];
+      if (Math.hypot(uv.canvasX - last.x, uv.canvasY - last.y) > 1){
+        interaction.currentStroke.points.push({ x: uv.canvasX, y: uv.canvasY });
+        composeTexture();
+      }
+    }
+    return;
   }
-  if (pMode === 'drag') { snapshot(); refreshLayers(); }
-  if (pMode === 'pinch') { snapshot(); refreshLayers(); }
-  orbitCtrl.enabled = !drawMode;
-  pMode = 'orbit'; dragL = null; pinchL = null;
+
+  if (interaction.mode === 'move' && interaction.layerStart && interaction.pointers.size === 1){
+    const uv = getUVFromEvent(e.clientX, e.clientY);
+    if (uv){
+      const sel = state.layers.find(l => l.id === state.selectedId);
+      if (!sel) return;
+      // Move by delta in UV space. With flipY=false, layer.y maps directly to v, so we add dv (no flip).
+      const du = uv.u - interaction.initialUV.u;
+      const dv = uv.v - interaction.initialUV.v;
+      sel.x = clamp01(interaction.layerStart.x + du);
+      sel.y = clamp01(interaction.layerStart.y + dv);
+      composeTexture();
+      renderSelectedTransformUI();
+    }
+    return;
+  }
+
+  if (interaction.mode === 'transform' && interaction.layerStart && interaction.pointers.size === 2){
+    const pts = [...interaction.pointers.values()];
+    const sel = state.layers.find(l => l.id === state.selectedId);
+    if (!sel) return;
+    const d = distance(pts[0], pts[1]);
+    const a = angle(pts[0], pts[1]);
+    const scaleFactor = d / Math.max(1, interaction.initialDistance);
+    const rotDelta = a - interaction.initialAngle;
+    sel.scale = Math.max(0.05, Math.min(3, interaction.layerStart.scale * scaleFactor));
+    sel.rotation = interaction.layerStart.rotation + rotDelta;
+    composeTexture();
+    renderSelectedTransformUI();
+  }
 }
 
-threeCanvas.addEventListener('mousedown',  onStart);
-threeCanvas.addEventListener('mousemove',  onMove);
-threeCanvas.addEventListener('mouseup',    onEnd);
-threeCanvas.addEventListener('mouseleave', onEnd);
-threeCanvas.addEventListener('touchstart', onStart, {passive:false});
-threeCanvas.addEventListener('touchmove',  onMove,  {passive:false});
-threeCanvas.addEventListener('touchend',   onEnd,   {passive:true});
-threeCanvas.addEventListener('touchcancel',onEnd,   {passive:true});
+function onPointerUp(e){
+  interaction.pointers.delete(e.pointerId);
+  if (interaction.pointers.size === 0){
+    if (interaction.mode === 'draw' && interaction.currentStroke){
+      pushHistory();
+      interaction.currentStroke = null;
+    } else if (interaction.mode === 'move' || interaction.mode === 'transform'){
+      pushHistory();
+    }
+    interaction.mode = null;
+    interaction.layerStart = null;
+    if (!state.drawMode){
+      controls.enabled = true;
+    }
+    hideModeChip();
+  }
+}
 
-document.getElementById('hud-deselect').onclick = () => {
-  selId = null; hideXform(); redraw(); refreshLayers();
-};
+function clamp01(v){ return Math.max(0, Math.min(1, v)); }
 
+/* =========================================================================
+   ANIMATE
+   ========================================================================= */
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
 
-/* ══════════════════════════════════════════════════════════════
-   §11  LAYER LIST & XFORM PANEL
-══════════════════════════════════════════════════════════════ */
-function refreshLayers() {
-  const list = document.getElementById('layer-list');
-  const all  = [
-    ...layers.map((L,i)  => ({...L, _src:'layer', _i:i})),
-    ...drawStrokes.map((s,i) => ({id:'s'+i, type:'stroke', color:s.color, _src:'stroke', _i:i}))
-  ];
-  if (!all.length) {
-    list.innerHTML = '<p style="font-size:12px;color:var(--text3);text-align:center;padding:28px 0">No layers yet</p>';
+/* =========================================================================
+   UI WIRING
+   ========================================================================= */
+const CURATED_COLORS = [
+  '#f4f3f0', '#ffffff', '#0c0c0d', '#5b5e66', '#a8a39c',
+  '#3D9E8C', '#1f4e44', '#7ab9ad',
+  '#c8504a', '#e0a82e', '#3a6ec5', '#c97ba0', '#6c4ad1',
+];
+
+const BG_COLORS = [
+  '#f4f3f0', '#e6e2da', '#d4d0c7', '#0c0c0d', '#1c1c20', '#262730',
+  '#3D9E8C', '#dcebe7'
+];
+
+const FONT_FAMILIES = [
+  { name: 'Geist', value: "Geist, sans-serif" },
+  { name: 'Serif', value: "'Instrument Serif', serif" },
+  { name: 'Mono', value: "ui-monospace, 'Courier New', monospace" },
+  { name: 'Bold', value: "Geist, sans-serif", weight: 800 },
+  { name: 'Italic', value: "'Instrument Serif', serif", italic: true },
+];
+
+// Tabs
+document.querySelectorAll('.panel-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.panel-tabs .tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+
+    if (window.innerWidth <= 900){
+      document.getElementById('panel').classList.add('expanded');
+    }
+    if (tab.dataset.tab === 'layers') rebuildLayerListUI();
+    if (tab.dataset.tab === 'save') rebuildSavedDesignsList();
+  });
+});
+
+// Color swatches
+const curatedSwatchEl = document.getElementById('curatedSwatches');
+CURATED_COLORS.forEach(c => {
+  const sw = document.createElement('button');
+  sw.className = 'swatch';
+  sw.style.background = c;
+  sw.dataset.color = c;
+  sw.setAttribute('aria-label', `Set color ${c}`);
+  if (c === state.baseColor) sw.classList.add('active');
+  sw.addEventListener('click', () => {
+    state.baseColor = c;
+    document.getElementById('customColor').value = c;
+    document.getElementById('customColorHex').textContent = c.toUpperCase();
+    document.querySelectorAll('#curatedSwatches .swatch').forEach(s => s.classList.toggle('active', s.dataset.color === c));
+    pushHistory();
+    composeTexture();
+    applyBaseColor();
+  });
+  curatedSwatchEl.appendChild(sw);
+});
+document.getElementById('customColor').addEventListener('input', e => {
+  const c = e.target.value;
+  state.baseColor = c;
+  document.getElementById('customColorHex').textContent = c.toUpperCase();
+  document.querySelectorAll('#curatedSwatches .swatch').forEach(s => s.classList.remove('active'));
+  composeTexture();
+  applyBaseColor();
+});
+document.getElementById('customColor').addEventListener('change', () => pushHistory());
+
+function applyBaseColor(){ /* nothing else needed; texture handles it */ }
+
+// BG swatches
+const bgSwatchEl = document.getElementById('bgSwatches');
+BG_COLORS.forEach(c => {
+  const sw = document.createElement('button');
+  sw.className = 'swatch';
+  sw.style.background = c;
+  if (c === state.bgColor) sw.classList.add('active');
+  sw.addEventListener('click', () => {
+    state.bgColor = c;
+    document.querySelectorAll('#bgSwatches .swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    applyBackground();
+    pushHistory();
+  });
+  bgSwatchEl.appendChild(sw);
+});
+function applyBackground(){
+  scene.background = new THREE.Color(state.bgColor);
+}
+
+// Theme toggle
+function setTheme(mode){
+  document.documentElement.classList.toggle('dark', mode === 'dark');
+}
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const isDark = document.documentElement.classList.toggle('dark');
+  toast(isDark ? 'Dark mode' : 'Light mode');
+});
+document.getElementById('lightThemeBtn').addEventListener('click', () => setTheme('light'));
+document.getElementById('darkThemeBtn').addEventListener('click', () => setTheme('dark'));
+
+// Image upload
+document.getElementById('imageUpload').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024){
+    toast('Image too large (max 10MB).', 'error');
+    return;
+  }
+  const dataURL = await fileToCompressedDataURL(file, 800);
+  const img = await loadImage(dataURL);
+  const layer = createImageLayer(img, dataURL);
+  state.layers.push(layer);
+  state.selectedId = layer.id;
+  pushHistory();
+  composeTexture();
+  rebuildLayerListUI();
+  renderSelectedTransformUI();
+  toast('Graphic added');
+  e.target.value = '';
+});
+
+function loadImage(src){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+async function fileToCompressedDataURL(file, maxDim = 800){
+  const dataURL = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+  const img = await loadImage(dataURL);
+  let w = img.naturalWidth, h = img.naturalHeight;
+  if (Math.max(w, h) > maxDim){
+    const r = maxDim / Math.max(w, h);
+    w = Math.round(w * r); h = Math.round(h * r);
+  }
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  return c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.9);
+}
+
+function createImageLayer(img, src){
+  const fitScale = Math.min(0.45 * CANVAS_SIZE / img.naturalWidth, 0.45 * CANVAS_SIZE / img.naturalHeight);
+  return {
+    id: nextLayerId++,
+    type: 'image',
+    src,
+    _img: img,
+    x: 0.5,
+    y: 0.45,
+    scale: fitScale,
+    rotation: 0,
+    visible: true,
+    name: 'Graphic ' + nextLayerId,
+  };
+}
+
+// Add text
+const fontListEl = document.getElementById('fontList');
+let activeFontIdx = 0;
+FONT_FAMILIES.forEach((f, i) => {
+  const pill = document.createElement('button');
+  pill.className = 'font-pill' + (i === 0 ? ' active' : '');
+  pill.style.fontFamily = f.value;
+  if (f.weight) pill.style.fontWeight = f.weight;
+  if (f.italic) pill.style.fontStyle = 'italic';
+  pill.textContent = f.name;
+  pill.addEventListener('click', () => {
+    activeFontIdx = i;
+    document.querySelectorAll('#fontList .font-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+  });
+  fontListEl.appendChild(pill);
+});
+
+document.getElementById('textColor').addEventListener('input', e => {
+  document.getElementById('textColorHex').textContent = e.target.value.toUpperCase();
+});
+
+document.getElementById('addTextBtn').addEventListener('click', () => {
+  const text = document.getElementById('textInput').value.trim();
+  if (!text) { toast('Type something first.', 'error'); return; }
+  const f = FONT_FAMILIES[activeFontIdx];
+  const layer = {
+    id: nextLayerId++,
+    type: 'text',
+    text,
+    font: f.value,
+    fontSize: 80,
+    fontWeight: f.weight || 600,
+    italic: f.italic || false,
+    color: document.getElementById('textColor').value,
+    x: 0.5, y: 0.5,
+    scale: 1,
+    rotation: 0,
+    visible: true,
+    name: text.slice(0, 18),
+  };
+  state.layers.push(layer);
+  state.selectedId = layer.id;
+  pushHistory();
+  composeTexture();
+  rebuildLayerListUI();
+  renderSelectedTransformUI();
+  document.getElementById('textInput').value = '';
+  toast('Text added');
+});
+
+// Draw mode
+const drawToolbar = document.getElementById('drawToolbar');
+const drawToggleBtn = document.getElementById('drawToggleBtn');
+function setDrawMode(on){
+  state.drawMode = on;
+  drawToolbar.classList.toggle('show', on);
+  drawToggleBtn.innerHTML = on
+    ? `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg> Exit draw mode`
+    : `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg> Enter draw mode`;
+  drawToggleBtn.classList.toggle('accent', !on);
+  drawToggleBtn.classList.toggle('outline', on);
+  controls.enabled = !on;
+  if (on) showModeChip('Draw mode'); else hideModeChip();
+}
+drawToggleBtn.addEventListener('click', () => setDrawMode(!state.drawMode));
+
+// Brush controls
+document.querySelectorAll('.draw-color').forEach(el => {
+  el.addEventListener('click', () => {
+    state.drawColor = el.dataset.color;
+    document.querySelectorAll('.draw-color').forEach(d => d.classList.remove('active'));
+    el.classList.add('active');
+  });
+});
+document.getElementById('brushSize').addEventListener('input', e => {
+  state.brushSize = parseInt(e.target.value, 10);
+});
+document.getElementById('undoStrokeBtn').addEventListener('click', () => {
+  if (state.strokes.length){
+    state.strokes.pop();
+    pushHistory();
+    composeTexture();
+  }
+});
+document.getElementById('clearDrawBtn').addEventListener('click', () => {
+  if (!state.strokes.length) return;
+  state.strokes = [];
+  pushHistory();
+  composeTexture();
+  toast('Strokes cleared');
+});
+
+// Undo / Redo
+document.getElementById('undoBtn').addEventListener('click', undo);
+document.getElementById('redoBtn').addEventListener('click', redo);
+async function undo(){
+  if (!undoStack.length) return;
+  redoStack.push(serializeState());
+  const prev = undoStack.pop();
+  undoSuspended = true;
+  await restoreState(prev);
+  undoSuspended = false;
+  refreshUndoButtons();
+}
+async function redo(){
+  if (!redoStack.length) return;
+  undoStack.push(serializeState());
+  const next = redoStack.pop();
+  undoSuspended = true;
+  await restoreState(next);
+  undoSuspended = false;
+  refreshUndoButtons();
+}
+window.addEventListener('keydown', e => {
+  const z = e.key === 'z' || e.key === 'Z';
+  if ((e.ctrlKey || e.metaKey) && z && !e.shiftKey){ e.preventDefault(); undo(); }
+  else if ((e.ctrlKey || e.metaKey) && (z && e.shiftKey || e.key === 'y')){ e.preventDefault(); redo(); }
+});
+
+// Toggle panel
+document.getElementById('togglePanelBtn').addEventListener('click', () => {
+  const panel = document.getElementById('panel');
+  if (window.innerWidth > 900){
+    panel.classList.toggle('collapsed');
+  } else {
+    panel.classList.toggle('expanded');
+  }
+});
+
+// Bottom sheet drag
+const sheetHandle = document.getElementById('sheetHandle');
+const panelEl = document.getElementById('panel');
+let sheetDrag = null;
+sheetHandle.addEventListener('pointerdown', e => {
+  if (window.innerWidth > 900) return;
+  sheetHandle.setPointerCapture(e.pointerId);
+  sheetDrag = { startY: e.clientY, expanded: panelEl.classList.contains('expanded') };
+  panelEl.style.transition = 'none';
+});
+sheetHandle.addEventListener('pointermove', e => {
+  if (!sheetDrag) return;
+  const dy = e.clientY - sheetDrag.startY;
+  // Visual feedback - we just toggle on threshold at end
+});
+sheetHandle.addEventListener('pointerup', e => {
+  if (!sheetDrag) return;
+  panelEl.style.transition = '';
+  const dy = e.clientY - sheetDrag.startY;
+  if (sheetDrag.expanded){
+    if (dy > 80) panelEl.classList.remove('expanded');
+  } else {
+    if (dy < -40) panelEl.classList.add('expanded');
+    else panelEl.classList.add('expanded'); // tap to expand
+  }
+  sheetDrag = null;
+});
+
+// Layer list
+function rebuildLayerListUI(){
+  const list = document.getElementById('layerList');
+  if (state.layers.length === 0 && state.strokes.length === 0){
+    list.innerHTML = '<div class="empty-state">No assets yet — upload an image, add text, or draw.</div>';
     return;
   }
   list.innerHTML = '';
-  [...all].reverse().forEach(item => {
-    const div = document.createElement('div');
-    div.className = 'l-item' + (item.id===selId?' on':'');
-
-    const thumb = document.createElement('div'); thumb.className='l-thumb';
-    if (item.type==='image'&&item.imageEl) { const im=document.createElement('img');im.src=item.imageEl.src;thumb.appendChild(im); }
-    else if (item.type==='text') { thumb.textContent='T'; thumb.style.cssText=`background:${item.color};color:#fff;font-size:16px;font-weight:900`; }
-    else { thumb.style.background=item.color||'#888'; }
-
-    const info=document.createElement('div'); info.className='l-info';
-    info.innerHTML=`<div class="l-name">${item.type==='text'?`"${item.text}"`:item.type==='stroke'?'Stroke':'Image'}</div><div class="l-type">${item.type}</div>`;
-
-    const del=document.createElement('button'); del.className='l-del'; del.textContent='✕';
-    del.onclick=ev=>{ ev.stopPropagation();
-      if(item._src==='layer'){layers.splice(item._i,1);if(selId===item.id){selId=null;hideXform();}}
-      else drawStrokes.splice(item._i,1);
-      snapshot();redraw();refreshLayers();toast('Deleted');
-    };
-
-    if (item._src==='layer') {
-      div.onclick=()=>{
-        selId=item.id;syncXform(item);
-        if(item.type==='image'){activeImg=item;syncImgSliders(item);}
-        if(item.type==='text') activeTxt=item;
-        redraw();refreshLayers();
-      };
+  // Layers (top first in UI)
+  for (let i = state.layers.length - 1; i >= 0; i--){
+    const l = state.layers[i];
+    const item = document.createElement('div');
+    item.className = 'layer-item' + (l.id === state.selectedId ? ' active' : '');
+    let thumbHTML = '';
+    if (l.type === 'image' && l.src){
+      thumbHTML = `<div class="thumb"><img src="${l.src}" alt=""></div>`;
+    } else if (l.type === 'text'){
+      thumbHTML = `<div class="thumb" style="font-family:${l.font}; font-weight:${l.fontWeight||600}; color:${l.color}; font-size:14px;">T</div>`;
     }
-    div.appendChild(thumb);div.appendChild(info);div.appendChild(del);
-    list.appendChild(div);
-  });
-}
-
-function syncXform(L) {
-  document.getElementById('xform-panel').classList.add('show');
-  sv('sx','sx-v',Math.round(L.x*100),v=>v+'%');
-  sv('sy','sy-v',Math.round(L.y*100),v=>v+'%');
-  sv('ss','ss-v',Math.round(L.scale||40),v=>v+'%');
-  sv('sr','sr-v',Math.round(L.rotate||0),v=>v+'°');
-  sv('so','so-v',Math.round((L.opacity??1)*100),v=>v+'%');
-}
-function hideXform() { document.getElementById('xform-panel').classList.remove('show'); }
-
-[['sx','sx-v','x',v=>v+'%',v=>v/100],
- ['sy','sy-v','y',v=>v+'%',v=>v/100],
- ['ss','ss-v','scale',v=>v+'%',v=>parseFloat(v)],
- ['sr','sr-v','rotate',v=>v+'°',v=>parseFloat(v)],
- ['so','so-v','opacity',v=>v+'%',v=>v/100],
-].forEach(([id,vid,prop,fmt,xfm])=>{
-  document.getElementById(id).oninput=function(){
-    document.getElementById(vid).textContent=fmt(this.value);
-    const L=layers.find(l=>l.id===selId);if(!L)return;
-    L[prop]=xfm(this.value);
-    if(L===activeImg)syncImgSliders(L);
-    redraw();
-  };
-  document.getElementById(id).onchange=()=>snapshot();
-});
-
-document.getElementById('btn-del-sel').onclick=()=>{
-  if(selId===null)return toast('Nothing selected');
-  layers=layers.filter(l=>l.id!==selId);
-  selId=null;hideXform();snapshot();redraw();refreshLayers();toast('Deleted');
-};
-document.getElementById('btn-clear-layers').onclick=clearAll;
-
-
-/* ══════════════════════════════════════════════════════════════
-   §12  USER STATE  (Flutter bridge — no in-app login UI)
-   ──────────────────────────────────────────────────────────────
-   Authentication is handled entirely by the Senior Year Flutter
-   app.  This section only manages displaying the user state and
-   providing a helper that checks if a user is ready before saving.
-══════════════════════════════════════════════════════════════ */
-
-function requireUser(action) {
-  if (currentUser && currentUser.uid) return true;
-  toast('⚠️ Open this page inside the Senior Year app to sign in');
-  notifyFlutter('auth_required', { action });
-  return false;
-}
-
-
-/* ══════════════════════════════════════════════════════════════
-   §13  SAVE & SUBMIT — Firestore
-   ──────────────────────────────────────────────────────────────
-   Collections:
-     user_designs      — draft saves per user
-     submitted_designs — final submissions for admin review
-══════════════════════════════════════════════════════════════ */
-
-function buildDesignData() {
-  return {
-    baseColor,
-    layers: layers.map(L => ({
-      type:    L.type,
-      x:       L.x,
-      y:       L.y,
-      scale:   L.scale,
-      rotate:  L.rotate  || 0,
-      opacity: L.opacity ?? 1,
-      ...(L.type === 'image' ? { _imgSrc: L._imgSrc || '' } : {}),
-      ...(L.type === 'text'  ? {
-        text:    L.text,
-        color:   L.color,
-        font:    L.font,
-        size:    L.size
-      } : {})
-    })),
-    drawStrokes: drawStrokes.map(s => ({
-      color:   s.color,
-      size:    s.size,
-      opacity: s.opacity,
-      // Store only a sampled subset (every 3rd point) to stay within Firestore 1MB limit
-      points:  s.points.filter((_,i) => i % 3 === 0)
-    })),
-    strokeCount: drawStrokes.length,
-    layerCount:  layers.length
-  };
-}
-
-function getPreviewDataURL() {
-  // Resize to 400×400 JPEG — keeps Firestore doc well under 1 MB limit
-  const prev = document.createElement('canvas');
-  prev.width = prev.height = 400;
-  prev.getContext('2d').drawImage(texCanvas, 0, 0, 400, 400);
-  return prev.toDataURL('image/jpeg', 0.72);
-}
-
-/* ── SAVE DESIGN → user_designs/{uid}/designs/{autoId} ── */
-document.getElementById('btn-save-design').onclick = async () => {
-  if (!requireUser('save')) return;
-  if (!db) return toast('Firestore not available');
-
-  setBtnLoading('btn-save-design', true, '💾 Save Design');
-  try {
-    const preview  = getPreviewDataURL();
-    const designData = buildDesignData();
-    const payload = {
-      ...designData,
-      userId:      currentUser.uid,
-      userEmail:   currentUser.email   || '',
-      displayName: currentUser.displayName || '',
-      preview,                          // base64 JPEG thumbnail
-      status:      'saved',
-      createdAt:   firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt:   firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    // Save/overwrite the user's active draft
-    await db
-      .collection('user_designs')
-      .doc(currentUser.uid)
-      .collection('designs')
-      .doc('active_draft')
-      .set(payload);
-
-    toast('✅ Design saved');
-    notifyFlutter('design_saved', { uid: currentUser.uid, status: 'saved' });
-    loadSavedDesigns();
-  } catch(e) {
-    console.error('[Save]', e);
-    toast('Save failed: ' + e.message);
-  } finally {
-    setBtnLoading('btn-save-design', false, '💾 Save Design');
-  }
-};
-
-/* ── SUBMIT DESIGN → submitted_designs (top-level, for admin) ── */
-document.getElementById('btn-submit-design').onclick = async () => {
-  if (!requireUser('submit')) return;
-  if (!db) return toast('Firestore not available');
-  if (!confirm('Submit this design for production review?')) return;
-
-  setBtnLoading('btn-submit-design', true, '🚀 Submit to Admin');
-  try {
-    const preview    = getPreviewDataURL();
-    const designData = buildDesignData();
-    const payload = {
-      ...designData,
-      userId:      currentUser.uid,
-      userEmail:   currentUser.email   || '',
-      displayName: currentUser.displayName || '',
-      preview,
-      status:      'submitted',
-      submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
-      reviewedAt:  null,
-      adminNotes:  ''
-    };
-
-    // Top-level collection — admin dashboard queries this
-    const ref = await db.collection('submitted_designs').add(payload);
-
-    toast('🚀 Design submitted for review');
-    notifyFlutter('design_submitted', { uid: currentUser.uid, docId: ref.id });
-  } catch(e) {
-    console.error('[Submit]', e);
-    toast('Submit failed: ' + e.message);
-  } finally {
-    setBtnLoading('btn-submit-design', false, '🚀 Submit to Admin');
-  }
-};
-
-/* ── LOAD SAVED DESIGNS ── */
-async function loadSavedDesigns() {
-  if (!db || !currentUser) return;
-  const list = document.getElementById('saved-list');
-  list.innerHTML = '<p style="font-size:12px;color:var(--text3);text-align:center;padding:12px">Loading…</p>';
-
-  try {
-    // Fetch both draft and submissions
-    const [draftSnap, subSnap] = await Promise.all([
-      db.collection('user_designs').doc(currentUser.uid).collection('designs').get(),
-      db.collection('submitted_designs').where('userId','==',currentUser.uid).orderBy('submittedAt','desc').limit(6).get()
-    ]);
-
-    const items = [];
-    draftSnap.forEach(d => items.push({ ...d.data(), _id: d.id, _col: 'draft' }));
-    subSnap.forEach(d  => items.push({ ...d.data(), _id: d.id, _col: 'submitted' }));
-
-    if (!items.length) {
-      list.innerHTML = '<p style="font-size:12px;color:var(--text3);text-align:center;padding:16px 0">No saved designs yet.</p>';
-      return;
-    }
-
-    list.innerHTML = '';
-    items.forEach(d => {
-      const statusClass = d._col === 'submitted' ? 'status-submitted' : 'status-saved';
-      const statusLabel = d._col === 'submitted' ? 'Submitted' : 'Saved Draft';
-      const dateStr = d.updatedAt?.toDate?.()
-        ? d.updatedAt.toDate().toLocaleDateString()
-        : d.submittedAt?.toDate?.()
-          ? d.submittedAt.toDate().toLocaleDateString()
-          : (d.createdAt ? new Date(d.createdAt).toLocaleDateString() : '—');
-
-      const card = document.createElement('div');
-      card.className = 'saved-card';
-      card.innerHTML = `
-        ${d.preview ? `<img class="saved-thumb" src="${d.preview}" alt="preview"/>` : `<div class="saved-thumb" style="display:flex;align-items:center;justify-content:center;font-size:20px">🎨</div>`}
-        <div class="saved-info">
-          <div class="saved-date">${dateStr}</div>
-          <span class="saved-status ${statusClass}">${statusLabel}</span>
-        </div>`;
-      list.appendChild(card);
+    item.innerHTML = `
+      ${thumbHTML}
+      <div class="meta">
+        <div class="t">${escapeHTML(l.type === 'text' ? l.text : l.name)}</div>
+        <div class="s">${l.type}</div>
+      </div>
+      <div class="actions">
+        <button class="mini-btn" data-act="up" title="Bring forward"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg></button>
+        <button class="mini-btn" data-act="down" title="Send back"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg></button>
+        <button class="mini-btn" data-act="del" title="Delete"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg></button>
+      </div>
+    `;
+    item.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-act]')) return;
+      state.selectedId = l.id;
+      rebuildLayerListUI();
+      renderSelectedTransformUI();
+      composeTexture();
     });
-  } catch(e) {
-    console.error('[Load designs]', e);
-    list.innerHTML = '<p style="font-size:12px;color:var(--R);text-align:center;padding:12px">Could not load designs.</p>';
+    item.querySelector('[data-act="up"]').addEventListener('click', () => {
+      const idx = state.layers.indexOf(l);
+      if (idx < state.layers.length - 1){
+        [state.layers[idx], state.layers[idx+1]] = [state.layers[idx+1], state.layers[idx]];
+        pushHistory();
+        rebuildLayerListUI();
+        composeTexture();
+      }
+    });
+    item.querySelector('[data-act="down"]').addEventListener('click', () => {
+      const idx = state.layers.indexOf(l);
+      if (idx > 0){
+        [state.layers[idx], state.layers[idx-1]] = [state.layers[idx-1], state.layers[idx]];
+        pushHistory();
+        rebuildLayerListUI();
+        composeTexture();
+      }
+    });
+    item.querySelector('[data-act="del"]').addEventListener('click', () => {
+      state.layers = state.layers.filter(x => x !== l);
+      if (state.selectedId === l.id) state.selectedId = null;
+      pushHistory();
+      rebuildLayerListUI();
+      renderSelectedTransformUI();
+      composeTexture();
+    });
+    list.appendChild(item);
+  }
+  if (state.strokes.length){
+    const item = document.createElement('div');
+    item.className = 'layer-item';
+    item.innerHTML = `
+      <div class="thumb">✏</div>
+      <div class="meta">
+        <div class="t">Freehand drawing</div>
+        <div class="s">${state.strokes.length} stroke${state.strokes.length>1?'s':''}</div>
+      </div>
+      <div class="actions">
+        <button class="mini-btn" data-act="del" title="Clear strokes"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg></button>
+      </div>
+    `;
+    item.querySelector('[data-act="del"]').addEventListener('click', () => {
+      state.strokes = [];
+      pushHistory();
+      rebuildLayerListUI();
+      composeTexture();
+    });
+    list.appendChild(item);
   }
 }
+function escapeHTML(s){ return String(s||'').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
 
-/* ── Button loading state helper ── */
-function setBtnLoading(id, loading, defaultLabel) {
-  const btn = document.getElementById(id);
-  if (!btn) return;
-  btn.disabled = loading;
-  btn.style.opacity = loading ? '.6' : '1';
-  btn.innerHTML = loading
-    ? '<span style="display:inline-block;animation:spin .8s linear infinite">⏳</span> Working…'
-    : defaultLabel;
+// Selected layer transform card (in image / text panes)
+function renderSelectedTransformUI(){
+  const sel = state.layers.find(l => l.id === state.selectedId);
+  const imgWrap = document.getElementById('selectedImageTransform');
+  const textWrap = document.getElementById('selectedTextTransform');
+  imgWrap.innerHTML = '';
+  textWrap.innerHTML = '';
+  if (!sel) return;
+
+  if (sel.type === 'image'){
+    imgWrap.appendChild(buildTransformCard(sel));
+  } else if (sel.type === 'text'){
+    textWrap.appendChild(buildTextEditCard(sel));
+  }
+}
+function buildTransformCard(layer){
+  const card = document.createElement('div');
+  card.className = 'transform-card';
+  card.innerHTML = `
+    <div class="head">
+      <span class="t">Selected — ${escapeHTML(layer.name)}</span>
+      <button class="mini-btn" data-act="del" title="Delete"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg></button>
+    </div>
+    <div class="field"><label>Size <b>${(layer.scale*100).toFixed(0)}%</b></label>
+      <input type="range" min="2" max="200" step="1" value="${Math.round(layer.scale*100)}" data-prop="scale">
+    </div>
+    <div class="field"><label>Rotation <b>${Math.round(layer.rotation * 180/Math.PI)}°</b></label>
+      <input type="range" min="-180" max="180" step="1" value="${Math.round(layer.rotation*180/Math.PI)}" data-prop="rotation">
+    </div>
+    <div class="field"><label>Position X <b>${Math.round(layer.x*100)}%</b></label>
+      <input type="range" min="0" max="100" step="1" value="${Math.round(layer.x*100)}" data-prop="x">
+    </div>
+    <div class="field"><label>Position Y <b>${Math.round(layer.y*100)}%</b></label>
+      <input type="range" min="0" max="100" step="1" value="${Math.round(layer.y*100)}" data-prop="y">
+    </div>
+  `;
+  card.querySelectorAll('input[type="range"]').forEach(r => {
+    r.addEventListener('input', e => {
+      const v = parseInt(e.target.value, 10);
+      const p = e.target.dataset.prop;
+      if (p === 'scale') layer.scale = v / 100;
+      else if (p === 'rotation') layer.rotation = v * Math.PI / 180;
+      else if (p === 'x') layer.x = v / 100;
+      else if (p === 'y') layer.y = v / 100;
+      composeTexture();
+      // Update label
+      e.target.previousElementSibling || null;
+      const labelB = e.target.parentElement.querySelector('label b');
+      if (labelB){
+        if (p === 'scale') labelB.textContent = (layer.scale*100).toFixed(0) + '%';
+        else if (p === 'rotation') labelB.textContent = Math.round(layer.rotation*180/Math.PI) + '°';
+        else labelB.textContent = Math.round((p === 'x' ? layer.x : layer.y)*100) + '%';
+      }
+    });
+    r.addEventListener('change', () => pushHistory());
+  });
+  card.querySelector('[data-act="del"]').addEventListener('click', () => {
+    state.layers = state.layers.filter(x => x !== layer);
+    state.selectedId = null;
+    pushHistory();
+    composeTexture();
+    rebuildLayerListUI();
+    renderSelectedTransformUI();
+  });
+  return card;
+}
+function buildTextEditCard(layer){
+  const card = document.createElement('div');
+  card.className = 'transform-card';
+  card.innerHTML = `
+    <div class="head">
+      <span class="t">Editing text</span>
+      <button class="mini-btn" data-act="del" title="Delete"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg></button>
+    </div>
+    <textarea class="text-input" rows="2" data-prop="text">${escapeHTML(layer.text)}</textarea>
+    <div class="field" style="margin-top:12px;"><label>Size <b>${(layer.scale*100).toFixed(0)}%</b></label>
+      <input type="range" min="20" max="300" step="1" value="${Math.round(layer.scale*100)}" data-prop="scale">
+    </div>
+    <div class="field"><label>Rotation <b>${Math.round(layer.rotation*180/Math.PI)}°</b></label>
+      <input type="range" min="-180" max="180" step="1" value="${Math.round(layer.rotation*180/Math.PI)}" data-prop="rotation">
+    </div>
+    <div class="field"><label>Position X <b>${Math.round(layer.x*100)}%</b></label>
+      <input type="range" min="0" max="100" step="1" value="${Math.round(layer.x*100)}" data-prop="x">
+    </div>
+    <div class="field"><label>Position Y <b>${Math.round(layer.y*100)}%</b></label>
+      <input type="range" min="0" max="100" step="1" value="${Math.round(layer.y*100)}" data-prop="y">
+    </div>
+  `;
+  card.querySelector('textarea').addEventListener('input', e => {
+    layer.text = e.target.value;
+    layer.name = layer.text.slice(0,18);
+    composeTexture();
+    rebuildLayerListUI();
+  });
+  card.querySelector('textarea').addEventListener('change', () => pushHistory());
+  card.querySelectorAll('input[type="range"]').forEach(r => {
+    r.addEventListener('input', e => {
+      const v = parseInt(e.target.value, 10);
+      const p = e.target.dataset.prop;
+      if (p === 'scale') layer.scale = v / 100;
+      else if (p === 'rotation') layer.rotation = v * Math.PI / 180;
+      else if (p === 'x') layer.x = v / 100;
+      else if (p === 'y') layer.y = v / 100;
+      composeTexture();
+      const labelB = e.target.parentElement.querySelector('label b');
+      if (labelB){
+        if (p === 'scale') labelB.textContent = (layer.scale*100).toFixed(0) + '%';
+        else if (p === 'rotation') labelB.textContent = Math.round(layer.rotation*180/Math.PI) + '°';
+        else labelB.textContent = Math.round((p === 'x' ? layer.x : layer.y)*100) + '%';
+      }
+    });
+    r.addEventListener('change', () => pushHistory());
+  });
+  card.querySelector('[data-act="del"]').addEventListener('click', () => {
+    state.layers = state.layers.filter(x => x !== layer);
+    state.selectedId = null;
+    pushHistory();
+    composeTexture();
+    rebuildLayerListUI();
+    renderSelectedTransformUI();
+  });
+  return card;
 }
 
+// Mode chip
+let _modeTimeout = null;
+function showModeChip(text){
+  const chip = document.getElementById('modeChip');
+  document.getElementById('modeChipText').textContent = text;
+  chip.classList.add('show');
+  clearTimeout(_modeTimeout);
+}
+function hideModeChip(){
+  clearTimeout(_modeTimeout);
+  _modeTimeout = setTimeout(() => {
+    document.getElementById('modeChip').classList.remove('show');
+  }, 600);
+}
 
-/* ══════════════════════════════════════════════════════════════
-   §14  UTILITIES
-══════════════════════════════════════════════════════════════ */
-function rng(inputId, spanId, fmt, cb) {
-  document.getElementById(inputId).addEventListener('input', function() {
-    document.getElementById(spanId).textContent = fmt(parseFloat(this.value));
-    if (cb) cb();
+// Toast
+function toast(msg, kind='default'){
+  const stack = document.getElementById('toastStack');
+  const t = document.createElement('div');
+  t.className = 'toast' + (kind === 'success' ? ' success' : '') + (kind === 'error' ? ' error' : '');
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(() => t.remove(), 3200);
+}
+
+/* =========================================================================
+   SAVE / SUBMIT
+   ========================================================================= */
+function getPreviewDataURL(maxDim = 512){
+  const src = renderer.domElement;
+  const w = maxDim, h = maxDim;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = state.bgColor;
+  ctx.fillRect(0,0,w,h);
+  ctx.drawImage(src, 0, 0, w, h);
+  return c.toDataURL('image/jpeg', 0.7);
+}
+
+document.getElementById('saveDesignBtn').addEventListener('click', async () => {
+  const data = serializeStateForExport();
+  const preview = getPreviewDataURL();
+  const id = 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const record = { id, userId: firebaseUser.uid, kind: 'saved', design: data, preview, savedAt: Date.now() };
+  if (firebaseReady){
+    try{
+      const { doc, setDoc, serverTimestamp } = firestore;
+      await setDoc(doc(firestore.db, 'designs', id), { ...record, savedAt: serverTimestamp() });
+      toast('Saved to cloud', 'success');
+    } catch(err){ console.warn(err); toast('Save failed — kept locally', 'error'); saveLocal(record); }
+  } else {
+    saveLocal(record);
+    toast('Design saved (local)', 'success');
+  }
+  rebuildSavedDesignsList();
+});
+document.getElementById('submitDesignBtn').addEventListener('click', async () => {
+  const data = serializeStateForExport();
+  const preview = getPreviewDataURL();
+  const id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const record = { id, userId: firebaseUser.uid, kind: 'submission', design: data, preview, submittedAt: Date.now(), status: 'pending' };
+  if (firebaseReady){
+    try{
+      const { doc, setDoc, serverTimestamp } = firestore;
+      await setDoc(doc(firestore.db, 'submissions', id), { ...record, submittedAt: serverTimestamp() });
+    } catch(err){ console.warn(err); saveLocal(record, 'submissions'); }
+  } else {
+    saveLocal(record, 'submissions');
+  }
+  // Show modal with preview
+  const img = new Image();
+  img.src = preview;
+  const previewEl = document.getElementById('submitPreview');
+  previewEl.innerHTML = '';
+  previewEl.appendChild(img);
+  document.getElementById('submitModal').classList.add('show');
+});
+document.getElementById('closeSubmitModal').addEventListener('click', () => {
+  document.getElementById('submitModal').classList.remove('show');
+});
+
+function serializeStateForExport(){
+  return {
+    baseColor: state.baseColor,
+    bgColor: state.bgColor,
+    layers: state.layers.map(l => {
+      const out = { ...l };
+      delete out._img;
+      return out;
+    }),
+    strokeCount: state.strokes.length,
+    strokes: state.strokes,
+    timestamp: Date.now(),
+  };
+}
+function saveLocal(record, kind = 'designs'){
+  const key = 'atelier_' + kind;
+  const arr = JSON.parse(localStorage.getItem(key) || '[]');
+  arr.unshift(record);
+  if (arr.length > 30) arr.length = 30;
+  localStorage.setItem(key, JSON.stringify(arr));
+}
+function getLocalDesigns(){
+  return JSON.parse(localStorage.getItem('atelier_designs') || '[]');
+}
+
+function rebuildSavedDesignsList(){
+  const list = document.getElementById('savedDesignsList');
+  let designs = [];
+  if (firebaseReady && firestore){
+    list.innerHTML = '<div class="empty-state">Loading from cloud…</div>';
+    (async () => {
+      try{
+        const { collection, getDocs, query, where, orderBy, limit } = firestore;
+        const q = query(collection(firestore.db, 'designs'), where('userId','==',firebaseUser.uid), orderBy('savedAt','desc'), limit(20));
+        const snap = await getDocs(q);
+        designs = []; snap.forEach(d => designs.push(d.data()));
+        renderSavedList(designs);
+      } catch(err){
+        console.warn(err);
+        designs = getLocalDesigns();
+        renderSavedList(designs);
+      }
+    })();
+  } else {
+    designs = getLocalDesigns();
+    renderSavedList(designs);
+  }
+}
+function renderSavedList(designs){
+  const list = document.getElementById('savedDesignsList');
+  if (!designs.length){
+    list.innerHTML = '<div class="empty-state">No saved designs yet.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  designs.forEach(d => {
+    const item = document.createElement('div');
+    item.className = 'layer-item';
+    const dateLabel = new Date(d.savedAt?.seconds ? d.savedAt.seconds*1000 : (d.savedAt || Date.now())).toLocaleDateString();
+    item.innerHTML = `
+      <div class="thumb"><img src="${d.preview}" alt=""></div>
+      <div class="meta">
+        <div class="t">${dateLabel}</div>
+        <div class="s">${(d.design?.layers?.length||0)} layers · ${(d.design?.strokeCount||0)} strokes</div>
+      </div>
+      <div class="actions">
+        <button class="mini-btn" data-act="load" title="Load"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/></svg></button>
+      </div>
+    `;
+    item.querySelector('[data-act="load"]').addEventListener('click', async () => {
+      // Restore design
+      const json = JSON.stringify({
+        baseColor: d.design.baseColor,
+        bgColor: d.design.bgColor,
+        layers: d.design.layers,
+        strokes: d.design.strokes || [],
+      });
+      pushHistory();
+      undoSuspended = true;
+      await restoreState(json);
+      undoSuspended = false;
+      toast('Design loaded');
+    });
+    list.appendChild(item);
   });
 }
 
-function sv(inputId, spanId, val, fmt) {
-  document.getElementById(inputId).value = val;
-  document.getElementById(spanId).textContent = fmt(val);
+/* =========================================================================
+   INITIALIZATION
+   ========================================================================= */
+async function init(){
+  // initial fill
+  composeTexture();
+  await loadGarment();
+  // Initialize history with starting state
+  pushHistory();
+  // hide loader
+  setTimeout(() => {
+    document.getElementById('loader').classList.add('hide');
+  }, 350);
+  animate();
+  initFirebase();
+  rebuildLayerListUI();
 }
 
-let _tt;
-function toast(msg) {
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(_tt); _tt = setTimeout(()=>el.classList.remove('show'), 2800);
-}
-
-// Apply dark theme on load
-document.documentElement.setAttribute('data-theme','dark');
-
-// Signal to Flutter that the configurator is ready to receive user data
-window.addEventListener('load', () => {
-  notifyFlutter('configurator_ready', { version: '2.0', ts: Date.now() });
-  _bridgeLog('Configurator ready — waiting for Flutter user data');
+init().catch(err => {
+  console.error(err);
+  toast('Initialization error', 'error');
 });
+
 </script>
+
 </body>
 </html>
