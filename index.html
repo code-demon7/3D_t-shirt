@@ -231,28 +231,56 @@ body{
   .panel-tabs{ padding: 14px 14px 0; }
 }
 
+/* Tablet (901-1200px): slightly narrower panel */
+@media (min-width: 901px) and (max-width: 1200px){
+  .panel{ width: 340px; right: 16px; }
+}
+
 /* Mobile / Tablet: bottom sheet */
 @media (max-width: 900px){
   .panel{
-    left: 10px; right: 10px;
-    bottom: calc(10px + var(--safe-bottom));
-    border-radius: 28px;
-    max-height: 72vh;
-    transform: translateY(calc(100% - 96px));
+    left: 0; right: 0;
+    bottom: 0;
+    border-radius: 24px 24px 0 0;
+    max-height: 78vh;
+    /* Peek: show tabs + handle always — transform shows only handle + tabs row */
+    transform: translateY(calc(100% - 112px));
   }
   .panel.expanded{ transform: translateY(0); }
   .sheet-handle{
     display:flex;
     flex-direction:column; align-items:center;
-    padding: 10px 0 4px;
+    padding: 12px 0 6px;
     cursor: grab;
     flex-shrink: 0;
+    min-height: 32px;
   }
   .sheet-handle .bar{
     width: 44px; height: 5px; border-radius: 999px;
     background: var(--ink-muted); opacity: .35;
   }
-  .panel-tabs{ padding: 6px 10px 0; }
+  .panel-tabs{
+    padding: 6px 10px 0;
+    /* Larger touch targets on mobile */
+    gap: 2px;
+  }
+  .tab{
+    min-width: 52px;
+    padding: 10px 8px;
+    font-size: 11px;
+  }
+  .tab svg{ width:20px; height:20px; }
+  /* More breathing room in panel body */
+  .panel-body{ padding: 16px 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+  /* Toast above the panel peek */
+  .toast-stack{ bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  /* Draw toolbar above panel */
+  .draw-toolbar{ bottom: calc(116px + env(safe-area-inset-bottom, 0px)); }
+  /* Topbar adjustments for small screens */
+  .topbar{ left: 10px; right: 10px; }
+  .brand .name b{ display: none; } /* hide STUDIO label on tiny screens */
+  /* Icon buttons larger tap area */
+  .icon-btn{ width: 48px; height: 48px; }
 }
 
 /* Tabs --------------------------------------------------------------------- */
@@ -464,7 +492,23 @@ input[type="range"]::-webkit-slider-thumb{
   box-shadow: 0 2px 6px rgba(0,0,0,0.15);
   transition: transform .2s;
 }
-input[type="range"]::-webkit-slider-thumb:hover{ transform: scale(1.1); }
+input[type="range"]::-webkit-slider-thumb:active{
+  transform: scale(1.25);
+  background: var(--accent);
+}
+@media (max-width: 900px){
+  input[type="range"]::-webkit-slider-thumb{
+    width: 28px; height: 28px;
+  }
+  .btn{ padding: 15px 18px; font-size: 15px; }
+  .mini-btn{ width: 36px; height: 36px; border-radius: 10px; }
+  .mini-btn svg{ width: 18px; height: 18px; }
+  .swatch{ border-radius: 12px; }
+  .font-pill{ padding: 12px 8px; font-size: 15px; }
+  .text-input, .select{ padding: 15px 16px; font-size: 15px; }
+  .upload{ padding: 32px 16px; }
+  .layer-item{ padding: 12px 14px; }
+}
 input[type="range"]::-moz-range-thumb{
   width: 22px; height: 22px;
   border-radius: 50%;
@@ -689,14 +733,18 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
   z-index: 45;
   display: none;
   align-items: center; gap: 6px;
-  padding: 8px;
+  padding: 10px 12px;
   background: var(--surface);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid var(--surface-stroke);
   border-radius: 999px;
   box-shadow: var(--shadow-md);
+  max-width: calc(100vw - 28px);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.draw-toolbar::-webkit-scrollbar{ display:none; }
 .draw-toolbar.show{ display: flex; animation: paneIn .35s var(--ease); }
 .draw-color{ width: 32px; height: 32px; border-radius: 50%; cursor: pointer; border: 2px solid white; box-shadow: 0 0 0 1px var(--surface-stroke); transition: transform .2s; }
 .draw-color:hover{ transform: scale(1.1); }
@@ -916,6 +964,18 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
       <h2 class="section-title">Make it real.</h2>
       <p class="subtitle">Save your design to revisit later, or submit it to the studio for production review.</p>
 
+      <!-- Flutter user info (populated by bridge) -->
+      <div id="flutterUserInfo" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+          background:var(--surface-solid);border-radius:14px;border:1px solid var(--surface-stroke);
+          color:var(--ink-muted);font-size:13px;">
+          <svg style="width:18px;height:18px;stroke-width:1.5;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          Open via Senior Year app to connect your account
+        </div>
+      </div>
+
       <button class="btn ghost" id="saveDesignBtn" style="margin-bottom:10px;">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
         Save design
@@ -966,40 +1026,147 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* =========================================================================
-   FIREBASE CONFIG — Replace with your project's keys to enable cloud save
+   FIREBASE — Real project config (Senior Year app)
    ========================================================================= */
 const FIREBASE_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey:            "AIzaSyAXk5Y5BbQXmPSnmYVmiaecP6uUOWFwlVc",
+  authDomain:        "my-senior-year-92abf.firebaseapp.com",
+  projectId:         "my-senior-year-92abf",
+  storageBucket:     "my-senior-year-92abf.firebasestorage.app",
+  messagingSenderId: "1078590786042",
+  appId:             "1:1078590786042:web:0f247e42a65878fa4c3c43"
 };
+
 let firebaseReady = false;
-let firestore = null;
-let firebaseUser = { uid: getOrCreateLocalUserId() };
+let firestore = null;   // holds { db, collection, addDoc, setDoc, doc, serverTimestamp, getDocs, query, where, orderBy, limit }
+
+// firebaseUser is populated by the Flutter bridge (see §FLUTTER below).
+// Falls back to a local anonymous ID if bridge hasn't fired yet.
+let firebaseUser = { uid: getOrCreateLocalUserId(), email: '', displayName: '' };
+
+/* =========================================================================
+   FLUTTER WEBVIEW BRIDGE
+   ─────────────────────────────────────────────────────────────────────────
+   The Senior Year Flutter app passes user data into this WebView via one
+   of three mechanisms (all handled below):
+
+   A) window.receiveFlutterUser(jsonString)  ← Flutter JS channel call
+   B) URL query param: ?uid=...&email=...&name=...  ← load-time injection
+   C) window.FlutterUserData = { uid, email, displayName }  ← pre-injection
+
+   Configurator sends events BACK to Flutter via:
+     window.FlutterBridge.postMessage(JSON.stringify({ type, payload }))
+
+   Add ?debug=1 to URL to see bridge log overlay on screen.
+   ========================================================================= */
+
+// Called by Flutter: FlutterBridge.postMessage(jsonString) inside the JS channel
+window.receiveFlutterUser = function(jsonStr){
+  try{
+    const data = typeof jsonStr === 'string' ? JSON.parse(jsonStr) : jsonStr;
+    if (data && data.uid) _applyFlutterUser(data);
+  } catch(e){ _bridgeLog('Parse error: ' + e); }
+};
+
+// Also listen for postMessage from Flutter WebView
+window.addEventListener('message', e => {
+  try{
+    const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (!msg) return;
+    if (msg.type === 'flutter_user' && msg.uid) _applyFlutterUser(msg);
+    if (msg.type === 'flutter_theme'){
+      if (msg.theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+    }
+  } catch(_){}
+});
+
+// B) URL query param fallback (WebView loads: configurator.html?uid=xxx&email=yyy&name=zzz)
+(function checkURLParams(){
+  const p = new URLSearchParams(window.location.search);
+  const uid = p.get('uid');
+  if (uid) _applyFlutterUser({
+    uid,
+    email:       p.get('email')       || '',
+    displayName: decodeURIComponent(p.get('name') || ''),
+  });
+})();
+
+// C) Pre-injected window object
+if (window.FlutterUserData && window.FlutterUserData.uid){
+  _applyFlutterUser(window.FlutterUserData);
+}
+
+function _applyFlutterUser(data){
+  firebaseUser = {
+    uid:         data.uid         || firebaseUser.uid,
+    email:       data.email       || data.userEmail || '',
+    displayName: data.displayName || data.name      || '',
+  };
+  _updateUserUI();
+  _bridgeLog('User set: ' + firebaseUser.email + ' (' + firebaseUser.uid + ')');
+  // Refresh saved designs list if the save tab is visible
+  try{ rebuildSavedDesignsList(); } catch(_){}
+}
+
+function _updateUserUI(){
+  const el = document.getElementById('flutterUserInfo');
+  if (!el) return;
+  const name = firebaseUser.displayName || firebaseUser.email || firebaseUser.uid.slice(0,10);
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+      background:var(--accent-soft);border-radius:14px;border:1px solid rgba(61,158,140,.25);">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);
+        color:#fff;font-weight:700;font-size:15px;display:grid;place-items:center;flex-shrink:0;">
+        ${(firebaseUser.displayName||firebaseUser.email||'U').slice(0,1).toUpperCase()}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(name)}</div>
+        <div style="font-size:11px;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(firebaseUser.email)}</div>
+      </div>
+      <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;" title="Connected"></div>
+    </div>`;
+}
+
+function _notifyFlutter(type, payload){
+  const msg = JSON.stringify({ type, payload });
+  try{ if (window.FlutterBridge?.postMessage) window.FlutterBridge.postMessage(msg); }catch(_){}
+  try{ if (window.flutter_inappwebview) window.flutter_inappwebview.callHandler('flutterHandler', msg); }catch(_){}
+  _bridgeLog('→ Flutter: ' + type);
+}
+
+// Debug overlay (visible only with ?debug=1)
+const _showDebug = new URLSearchParams(window.location.search).get('debug') === '1';
+let _debugEl = null;
+function _bridgeLog(msg){
+  if (!_showDebug) return;
+  if (!_debugEl){
+    _debugEl = document.createElement('div');
+    _debugEl.style.cssText = 'position:fixed;bottom:130px;left:8px;right:8px;z-index:9999;' +
+      'background:rgba(0,0,0,.8);color:#3D9E8C;font:11px/1.4 monospace;padding:8px 10px;' +
+      'border-radius:10px;max-height:100px;overflow-y:auto;pointer-events:none;white-space:pre-wrap;word-break:break-all;';
+    document.body.appendChild(_debugEl);
+  }
+  _debugEl.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg + '\n' + _debugEl.textContent;
+}
 
 async function initFirebase(){
-  if (FIREBASE_CONFIG.projectId === "YOUR_PROJECT_ID") {
-    console.info('[Atelier] Firebase not configured — using localStorage fallback.');
-    return;
-  }
   try{
     const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js");
     const { getFirestore, collection, addDoc, setDoc, doc, serverTimestamp, getDocs, query, where, orderBy, limit } =
       await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
-    const { getAuth, signInAnonymously, onAuthStateChanged } =
-      await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js");
     const app = initializeApp(FIREBASE_CONFIG);
-    firestore = { db: getFirestore(app), addDoc, setDoc, doc, collection, serverTimestamp, getDocs, query, where, orderBy, limit };
-    const auth = getAuth(app);
-    onAuthStateChanged(auth, (u) => { if (u) firebaseUser = u; });
-    await signInAnonymously(auth).catch(()=>{});
+    const db  = getFirestore(app);
+    firestore  = { db, addDoc, setDoc, doc, collection, serverTimestamp, getDocs, query, where, orderBy, limit };
     firebaseReady = true;
-    console.info('[Atelier] Firebase ready.');
+    _bridgeLog('Firestore ready');
+
+    // Tell Flutter we are ready to receive user data
+    _notifyFlutter('configurator_ready', { version: '2.1', ts: Date.now() });
+    console.info('[Atelier] Firebase ready (project: my-senior-year-92abf)');
   } catch(err){
-    console.warn('[Atelier] Firebase init failed:', err);
+    console.warn('[Atelier] Firebase init failed — using localStorage fallback.', err);
+    _notifyFlutter('configurator_ready', { version: '2.1', firebase: false });
   }
 }
 function getOrCreateLocalUserId(){
@@ -1105,15 +1272,22 @@ scene.add(fillLight);
 // Controls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.dampingFactor = 0.08;
+controls.dampingFactor = 0.07;
 controls.enablePan = false;
-controls.minDistance = 1.8;
-controls.maxDistance = 7;
+controls.minDistance = 1.5;
+controls.maxDistance = 8;
 controls.minPolarAngle = Math.PI * 0.18;
 controls.maxPolarAngle = Math.PI * 0.78;
-controls.rotateSpeed = 0.8;
-controls.zoomSpeed = 0.8;
-controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+controls.rotateSpeed = 0.75;
+controls.zoomSpeed = 0.6;           // FIX: was 0.8 — lower = smoother, no jumps
+controls.screenSpacePanning = false;
+// FIX: use ROTATE for one finger, DOLLY_ROTATE for two fingers.
+// DOLLY_PAN caused aggressive zoom jumps + fought with layer pinch gesture.
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
+// FIX: mouse wheel zoom — smooth, no jumps
+renderer.domElement.addEventListener('wheel', e => {
+  e.preventDefault();   // stop page scroll inside WebView
+}, { passive: false });
 
 function onResize(){
   const w = viewport.clientWidth;
@@ -1361,6 +1535,9 @@ function fitCameraToObject(object, fitOffset = 1.45){
   camera.far = dist * 100;
   camera.updateProjectionMatrix();
   controls.target.set(0, 0, 0);
+  // FIX: set zoom limits relative to model size so pinch zoom feels natural
+  controls.minDistance = maxDim * 0.6;
+  controls.maxDistance = maxDim * 4.5;
   controls.update();
 }
 
@@ -1925,20 +2102,28 @@ sheetHandle.addEventListener('pointerdown', e => {
 });
 sheetHandle.addEventListener('pointermove', e => {
   if (!sheetDrag) return;
-  const dy = e.clientY - sheetDrag.startY;
-  // Visual feedback - we just toggle on threshold at end
+  // intentionally no live transform — just detect swipe direction on up
 });
 sheetHandle.addEventListener('pointerup', e => {
   if (!sheetDrag) return;
   panelEl.style.transition = '';
   const dy = e.clientY - sheetDrag.startY;
   if (sheetDrag.expanded){
-    if (dy > 80) panelEl.classList.remove('expanded');
+    // swipe down to collapse
+    if (dy > 60) panelEl.classList.remove('expanded');
   } else {
-    if (dy < -40) panelEl.classList.add('expanded');
-    else panelEl.classList.add('expanded'); // tap to expand
+    // tap or swipe up to expand
+    if (dy < 60) panelEl.classList.add('expanded');
   }
   sheetDrag = null;
+});
+// Also expand when user taps any tab on mobile
+document.querySelectorAll('.panel-tabs .tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (window.innerWidth <= 900){
+      panelEl.classList.add('expanded');
+    }
+  });
 });
 
 // Layer list
@@ -2199,33 +2384,86 @@ document.getElementById('saveDesignBtn').addEventListener('click', async () => {
   const data = serializeStateForExport();
   const preview = getPreviewDataURL();
   const id = 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-  const record = { id, userId: firebaseUser.uid, kind: 'saved', design: data, preview, savedAt: Date.now() };
-  if (firebaseReady){
+  const record = {
+    id,
+    userId:      firebaseUser.uid,
+    userEmail:   firebaseUser.email       || '',
+    displayName: firebaseUser.displayName || '',
+    kind:        'saved',
+    design:      data,
+    preview,
+    savedAt:     Date.now(),
+    status:      'saved',
+  };
+
+  if (firebaseReady && firestore){
+    const btn = document.getElementById('saveDesignBtn');
+    btn.disabled = true; btn.textContent = 'Saving…';
     try{
-      const { doc, setDoc, serverTimestamp } = firestore;
-      await setDoc(doc(firestore.db, 'designs', id), { ...record, savedAt: serverTimestamp() });
-      toast('Saved to cloud', 'success');
-    } catch(err){ console.warn(err); toast('Save failed — kept locally', 'error'); saveLocal(record); }
+      const { setDoc, doc, serverTimestamp } = firestore;
+      // Collection: user_designs/{uid}/designs/{id}
+      await setDoc(
+        doc(firestore.db, 'user_designs', firebaseUser.uid, 'designs', id),
+        { ...record, savedAt: serverTimestamp() }
+      );
+      toast('Saved to cloud ✓', 'success');
+      _notifyFlutter('design_saved', { uid: firebaseUser.uid, id });
+    } catch(err){
+      console.warn('[Save]', err);
+      toast('Cloud save failed — kept locally', 'error');
+      saveLocal(record);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Save design`;
+    }
   } else {
     saveLocal(record);
     toast('Design saved (local)', 'success');
   }
   rebuildSavedDesignsList();
 });
+
 document.getElementById('submitDesignBtn').addEventListener('click', async () => {
   const data = serializeStateForExport();
   const preview = getPreviewDataURL();
   const id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-  const record = { id, userId: firebaseUser.uid, kind: 'submission', design: data, preview, submittedAt: Date.now(), status: 'pending' };
-  if (firebaseReady){
+  const record = {
+    id,
+    userId:      firebaseUser.uid,
+    userEmail:   firebaseUser.email       || '',
+    displayName: firebaseUser.displayName || '',
+    kind:        'submission',
+    design:      data,
+    preview,
+    submittedAt: Date.now(),
+    status:      'pending',
+    reviewedAt:  null,
+    adminNotes:  '',
+  };
+
+  if (firebaseReady && firestore){
+    const btn = document.getElementById('submitDesignBtn');
+    btn.disabled = true; btn.textContent = 'Submitting…';
     try{
-      const { doc, setDoc, serverTimestamp } = firestore;
-      await setDoc(doc(firestore.db, 'submissions', id), { ...record, submittedAt: serverTimestamp() });
-    } catch(err){ console.warn(err); saveLocal(record, 'submissions'); }
+      const { addDoc, collection, serverTimestamp } = firestore;
+      // Top-level collection: submitted_designs — admin dashboard queries this
+      await addDoc(
+        collection(firestore.db, 'submitted_designs'),
+        { ...record, submittedAt: serverTimestamp() }
+      );
+      _notifyFlutter('design_submitted', { uid: firebaseUser.uid, id });
+    } catch(err){
+      console.warn('[Submit]', err);
+      saveLocal(record, 'submissions');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg> Submit to studio`;
+    }
   } else {
     saveLocal(record, 'submissions');
   }
-  // Show modal with preview
+
+  // Show confirmation modal with preview
   const img = new Image();
   img.src = preview;
   const previewEl = document.getElementById('submitPreview');
@@ -2264,25 +2502,28 @@ function getLocalDesigns(){
 
 function rebuildSavedDesignsList(){
   const list = document.getElementById('savedDesignsList');
-  let designs = [];
   if (firebaseReady && firestore){
     list.innerHTML = '<div class="empty-state">Loading from cloud…</div>';
     (async () => {
       try{
-        const { collection, getDocs, query, where, orderBy, limit } = firestore;
-        const q = query(collection(firestore.db, 'designs'), where('userId','==',firebaseUser.uid), orderBy('savedAt','desc'), limit(20));
+        const { collection, getDocs, query, orderBy, limit } = firestore;
+        // Query: user_designs/{uid}/designs subcollection
+        const q = query(
+          collection(firestore.db, 'user_designs', firebaseUser.uid, 'designs'),
+          orderBy('savedAt','desc'),
+          limit(20)
+        );
         const snap = await getDocs(q);
-        designs = []; snap.forEach(d => designs.push(d.data()));
+        const designs = [];
+        snap.forEach(d => designs.push(d.data()));
         renderSavedList(designs);
       } catch(err){
-        console.warn(err);
-        designs = getLocalDesigns();
-        renderSavedList(designs);
+        console.warn('[Load designs]', err);
+        renderSavedList(getLocalDesigns());
       }
     })();
   } else {
-    designs = getLocalDesigns();
-    renderSavedList(designs);
+    renderSavedList(getLocalDesigns());
   }
 }
 function renderSavedList(designs){
