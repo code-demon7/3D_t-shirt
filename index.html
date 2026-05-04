@@ -8,7 +8,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=Bebas+Neue&family=Oswald:wght@400;600;700&family=Rajdhani:wght@600;700&family=Anton&family=Black+Han+Sans&family=Special+Elite&family=Russo+One&family=Permanent+Marker&family=Teko:wght@400;600;700&family=Barlow+Condensed:ital,wght@0,700;1,700&display=swap" rel="stylesheet">
+<!-- Local fonts loaded dynamically from assets/fonts/ — see initLocalFonts() below -->
 
 <style>
 /* ----------------------------------------------------------------- *
@@ -550,7 +550,14 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
 }
 .font-pill.active{ background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
-/* Layers list -------------------------------------------------------------- */
+/* Text color swatches — reuse garment swatch style, compact row */
+.text-color-swatches.swatches{
+  grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  gap: 7px;
+}
+.text-color-swatches.swatches .swatch{
+  width: 32px; height: 32px;
+}
 .layer-list{ display: flex; flex-direction: column; gap: 6px; }
 .layer-item{
   display: flex; align-items: center; gap: 10px;
@@ -1082,7 +1089,10 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
   <div class="toolbar-header" id="drawToolbarHandle">
     <div class="toolbar-drag-hint"><span></span><span></span></div>
     <div class="toolbar-title">Draw Tools</div>
-    <button class="toolbar-toggle-btn" id="toolbarCollapseBtn" title="Collapse">−</button>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <button class="toolbar-toggle-btn" id="toolbarCollapseBtn" title="Collapse/expand">−</button>
+      <button class="toolbar-toggle-btn" id="toolbarCloseBtn" title="Close toolbar" style="background:rgba(200,80,74,0.12);color:#c8504a;border-color:rgba(200,80,74,0.2);">✕</button>
+    </div>
   </div>
 
   <!-- Collapsible body -->
@@ -1236,9 +1246,12 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
 
       <div class="field">
         <label>Color <b id="textColorHex">#0C0C0D</b></label>
-        <div class="color-input-wrap" style="margin:0;">
+        <!-- Quick swatches — same style as garment color picker -->
+        <div class="swatches" id="textColorSwatches" style="margin-bottom:10px;"></div>
+        <!-- Custom picker row — same .color-input-wrap style -->
+        <div class="color-input-wrap" style="margin-top:0;">
           <input type="color" id="textColor" value="#0c0c0d">
-          <span class="text-muted">Tap to choose</span>
+          <span>Custom value <b id="textColorHexInline">#0C0C0D</b></span>
         </div>
       </div>
 
@@ -1679,24 +1692,17 @@ function _doComposeTexture(){
   tctx.fillStyle = state.baseColor;
   tctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // Strokes
+  // Strokes — rendered as smooth Catmull-Rom splines
   for (const stroke of state.strokes){
     if (stroke.points.length < 1) continue;
     tctx.save();
-    tctx.globalAlpha  = stroke.opacity !== undefined ? stroke.opacity : 1.0;
-    tctx.strokeStyle  = stroke.color;
-    tctx.lineWidth    = stroke.size;
-    tctx.lineCap      = 'round';
-    tctx.lineJoin     = 'round';
+    tctx.globalAlpha = stroke.opacity !== undefined ? stroke.opacity : 1.0;
+    tctx.strokeStyle = stroke.color;
+    tctx.lineWidth   = stroke.size;
+    tctx.lineCap     = 'round';
+    tctx.lineJoin    = 'round';
     tctx.beginPath();
-    tctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-    for (let i = 1; i < stroke.points.length; i++){
-      tctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-    }
-    if (stroke.points.length === 1){
-      // single dot
-      tctx.lineTo(stroke.points[0].x + 0.01, stroke.points[0].y + 0.01);
-    }
+    _drawSmoothStroke(tctx, stroke.points);
     tctx.stroke();
     tctx.restore();
   }
@@ -1715,7 +1721,41 @@ function _doComposeTexture(){
   designTexture.needsUpdate = true;
 }
 
-function drawLayer(layer){
+/* _drawSmoothStroke — Catmull-Rom spline through stroke points
+   Produces fluid, natural-feeling brush curves identical to Procreate / Figma.
+   Tension 0.5 gives a good balance of smoothness without overshoot. */
+function _drawSmoothStroke(ctx, pts){
+  if (pts.length === 0) return;
+  if (pts.length === 1){
+    // Single tap — draw a small dot
+    ctx.arc(pts[0].x, pts[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  if (pts.length === 2){
+    ctx.moveTo(pts[0].x, pts[0].y);
+    ctx.lineTo(pts[1].x, pts[1].y);
+    return;
+  }
+
+  // Catmull-Rom → cubic bezier conversion (tension = 0.5)
+  const tension = 0.5;
+  ctx.moveTo(pts[0].x, pts[0].y);
+
+  for (let i = 0; i < pts.length - 1; i++){
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+
+    const cp1x = p1.x + (p2.x - p0.x) * tension / 3;
+    const cp1y = p1.y + (p2.y - p0.y) * tension / 3;
+    const cp2x = p2.x - (p3.x - p1.x) * tension / 3;
+    const cp2y = p2.y - (p3.y - p1.y) * tension / 3;
+
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+  }
+}
   const cx = layer.x * CANVAS_SIZE;
   const cy = layer.y * CANVAS_SIZE;
   tctx.save();
@@ -1739,7 +1779,7 @@ function drawLayer(layer){
     });
   }
   tctx.restore();
-}
+
 
 function getLayerBounds(layer){
   // Returns half-width/half-height in canvas px (after scale)
@@ -2080,10 +2120,20 @@ function onPointerMove(e){
   if (interaction.mode === 'draw' && interaction.currentStroke){
     const uv = getUVFromEvent(e.clientX, e.clientY);
     if (uv){
-      // Smooth: only push if moved enough
-      const last = interaction.currentStroke.points[interaction.currentStroke.points.length - 1];
-      if (Math.hypot(uv.canvasX - last.x, uv.canvasY - last.y) > 1){
-        interaction.currentStroke.points.push({ x: uv.canvasX, y: uv.canvasY });
+      const pts  = interaction.currentStroke.points;
+      const last = pts[pts.length - 1];
+      const rawX = uv.canvasX;
+      const rawY = uv.canvasY;
+
+      // Exponential smoothing (α=0.35) — reduces jitter while keeping responsiveness
+      const α = 0.35;
+      const sx = last.x + α * (rawX - last.x);
+      const sy = last.y + α * (rawY - last.y);
+
+      // Minimum distance threshold: skip micro-movements to avoid noisy segments
+      const minDist = Math.max(1.5, interaction.currentStroke.size * 0.08);
+      if (Math.hypot(sx - last.x, sy - last.y) > minDist){
+        pts.push({ x: sx, y: sy });
         composeTexture();
       }
     }
@@ -2164,27 +2214,96 @@ const BG_COLORS = [
   '#3D9E8C', '#dcebe7'
 ];
 
-const FONT_FAMILIES = [
-  // ── Clean / Minimal ──
-  { name: 'Geist',            value: "Geist, sans-serif",                        weight: 400, category: 'Minimal' },
-  { name: 'Geist Bold',       value: "Geist, sans-serif",                        weight: 700, category: 'Minimal' },
-  { name: 'Instrument Serif', value: "'Instrument Serif', serif",                weight: 400, category: 'Minimal', italic: false },
-  { name: 'Serif Italic',     value: "'Instrument Serif', serif",                weight: 400, category: 'Minimal', italic: true  },
-  // ── Bold / Display ──
-  { name: 'Bebas Neue',       value: "'Bebas Neue', sans-serif",                 weight: 400, category: 'Bold' },
-  { name: 'Anton',            value: "'Anton', sans-serif",                      weight: 400, category: 'Bold' },
-  { name: 'Russo One',        value: "'Russo One', sans-serif",                  weight: 400, category: 'Bold' },
-  { name: 'Black Han Sans',   value: "'Black Han Sans', sans-serif",             weight: 400, category: 'Bold' },
-  // ── Street / Urban ──
-  { name: 'Oswald Heavy',     value: "'Oswald', sans-serif",                     weight: 700, category: 'Street' },
-  { name: 'Teko',             value: "'Teko', sans-serif",                       weight: 600, category: 'Street' },
-  { name: 'Rajdhani',         value: "'Rajdhani', sans-serif",                   weight: 700, category: 'Street' },
-  { name: 'Barlow Condensed', value: "'Barlow Condensed', sans-serif",           weight: 700, italic: true, category: 'Street' },
-  // ── Expressive ──
-  { name: 'Permanent Marker', value: "'Permanent Marker', cursive",              weight: 400, category: 'Expressive' },
-  { name: 'Special Elite',    value: "'Special Elite', cursive",                 weight: 400, category: 'Expressive' },
-  { name: 'Monospace',        value: "ui-monospace, 'Courier New', monospace",   weight: 400, category: 'Expressive' },
+/* =========================================================================
+   LOCAL FONT SYSTEM
+   ─────────────────────────────────────────────────────────────────────────
+   Loads fonts dynamically from assets/fonts/.
+   Supported formats: .ttf .otf .woff .woff2
+
+   Font manifest file (optional): assets/fonts/manifest.json
+   Format: [{ "name":"My Font", "file":"MyFont.ttf", "weight":400,
+               "category":"Bold", "italic":false }]
+
+   If manifest.json is not found, fonts from a known filenames list are
+   tried. The configurator also ships fallback Google-hosted fonts that
+   are loaded only when no local font has the same name.
+   ========================================================================= */
+
+// Fallback fonts (loaded from Google if local assets/fonts/ is empty)
+const FALLBACK_FONTS = [
+  { name:'Geist',            file:null, family:"Geist, sans-serif",              weight:400, category:'Minimal' },
+  { name:'Geist Bold',       file:null, family:"Geist, sans-serif",              weight:700, category:'Minimal' },
+  { name:'Bebas Neue',       file:null, family:"'Bebas Neue', sans-serif",       weight:400, category:'Bold'    },
+  { name:'Anton',            file:null, family:"'Anton', sans-serif",            weight:400, category:'Bold'    },
+  { name:'Russo One',        file:null, family:"'Russo One', sans-serif",        weight:400, category:'Bold'    },
+  { name:'Oswald Heavy',     file:null, family:"'Oswald', sans-serif",           weight:700, category:'Street'  },
+  { name:'Permanent Marker', file:null, family:"'Permanent Marker', cursive",    weight:400, category:'Expressive' },
+  { name:'Special Elite',    file:null, family:"'Special Elite', cursive",       weight:400, category:'Expressive' },
+  { name:'Monospace',        file:null, family:"'Courier New', monospace",       weight:400, category:'Expressive' },
 ];
+
+let FONT_FAMILIES = [];   // populated by initLocalFonts()
+
+async function initLocalFonts(){
+  let localFonts = [];
+
+  // 1. Try loading manifest.json from assets/fonts/
+  try {
+    const res = await fetch('assets/fonts/manifest.json');
+    if (res.ok){
+      const manifest = await res.json();
+      for (const entry of manifest){
+        const fontFamily = entry.family || `"${entry.name}"`;
+        const url = `assets/fonts/${entry.file}`;
+        try {
+          const ff = new FontFace(entry.name, `url('${url}')`, {
+            weight: String(entry.weight || 400),
+            style:  entry.italic ? 'italic' : 'normal',
+          });
+          const loaded = await ff.load();
+          document.fonts.add(loaded);
+          localFonts.push({
+            name:     entry.name,
+            file:     entry.file,
+            family:   fontFamily,
+            value:    fontFamily,           // alias used by canvas drawing
+            weight:   entry.weight   || 400,
+            italic:   entry.italic   || false,
+            category: entry.category || 'Custom',
+            local:    true,
+          });
+          console.info(`[Fonts] Loaded: ${entry.name}`);
+        } catch(e){
+          console.warn(`[Fonts] Failed to load ${entry.file}:`, e.message);
+        }
+      }
+    }
+  } catch(_){
+    // manifest not found — that's fine
+  }
+
+  // 2. If no local fonts, load fallback Google Fonts
+  if (localFonts.length === 0){
+    try {
+      const gfLink = document.createElement('link');
+      gfLink.rel  = 'stylesheet';
+      gfLink.href = 'https://fonts.googleapis.com/css2?family=Geist:wght@400;700&family=Bebas+Neue&family=Anton&family=Russo+One&family=Oswald:wght@700&family=Permanent+Marker&family=Special+Elite&display=swap';
+      document.head.appendChild(gfLink);
+      await new Promise(r => setTimeout(r, 600)); // brief wait for CSS
+    } catch(_){}
+    FONT_FAMILIES = FALLBACK_FONTS.map(f => ({ ...f, value: f.family }));
+  } else {
+    FONT_FAMILIES = localFonts;
+  }
+
+  // 3. Rebuild the dropdown now that fonts are ready
+  buildFontDropdown();
+
+  // 4. Update body font to first local font if available
+  if (localFonts.length > 0 && localFonts[0].name){
+    document.body.style.fontFamily = `"${localFonts[0].name}", -apple-system, sans-serif`;
+  }
+}
 
 // Active font index
 let activeFontIdx = 0;
@@ -2195,26 +2314,24 @@ const fontSelectorBtn = document.getElementById('fontSelectorBtn');
 const fontSelectorPreview = document.getElementById('fontSelectorPreview');
 
 function buildFontDropdown(){
+  if (!FONT_FAMILIES.length) return;   // not ready yet
   fontDropdown.innerHTML = '';
   let lastCat = '';
   FONT_FAMILIES.forEach((f, i) => {
     if (f.category !== lastCat){
       lastCat = f.category;
       const catLabel = document.createElement('div');
-      catLabel.style.cssText = 'padding:8px 16px 4px;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted);background:var(--surface-solid);position:sticky;top:0;';
+      catLabel.style.cssText = 'padding:8px 16px 4px;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-muted);background:var(--surface-solid);position:sticky;top:0;z-index:1;';
       catLabel.textContent = f.category;
       fontDropdown.appendChild(catLabel);
     }
     const opt = document.createElement('div');
     opt.className = 'font-option' + (i === 0 ? ' active' : '');
-    opt.style.fontFamily = f.value;
-    opt.style.fontWeight = f.weight || 400;
-    if (f.italic) opt.style.fontStyle = 'italic';
     opt.innerHTML = `
       <div class="fo-preview" style="font-family:${f.value};font-weight:${f.weight||400};font-style:${f.italic?'italic':'normal'};">Aa</div>
       <div class="fo-info">
-        <div class="fo-name">${f.name}</div>
-        <div class="fo-cat">${f.category}</div>
+        <div class="fo-name">${escapeHTML(f.name)}</div>
+        <div class="fo-cat">${escapeHTML(f.category)}${f.local ? ' · Local' : ''}</div>
       </div>`;
     opt.addEventListener('click', () => {
       activeFontIdx = i;
@@ -2225,19 +2342,28 @@ function buildFontDropdown(){
       fontSelectorPreview.style.fontStyle  = f.italic ? 'italic' : 'normal';
       fontSelectorPreview.textContent = 'Aa — ' + f.name;
       fontDropdown.classList.remove('open');
-      // If a text layer is selected, live-update it
       const sel = state.layers.find(l => l.id === state.selectedId && l.type === 'text');
-      if (sel){
-        sel.font       = f.value;
-        sel.fontWeight = f.weight || 400;
-        sel.italic     = f.italic || false;
-        composeTexture();
-      }
+      if (sel){ sel.font = f.value; sel.fontWeight = f.weight || 400; sel.italic = f.italic || false; composeTexture(); }
     });
     fontDropdown.appendChild(opt);
   });
+
+  // Seed the preview button with the first font
+  const first = FONT_FAMILIES[0];
+  if (first){
+    fontSelectorPreview.style.fontFamily = first.value;
+    fontSelectorPreview.style.fontWeight = first.weight || 400;
+    fontSelectorPreview.textContent      = 'Aa — ' + first.name;
+  }
 }
-buildFontDropdown();
+// buildFontDropdown() is now called by initLocalFonts() after fonts are ready
+
+// Toggle dropdown open/close
+fontSelectorBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  fontDropdown.classList.toggle('open');
+});
+document.addEventListener('click', () => fontDropdown.classList.remove('open'));
 
 // Toggle dropdown open/close
 fontSelectorBtn.addEventListener('click', e => {
@@ -2434,9 +2560,46 @@ function createImageLayer(img, src){
 
 // Add text — wiring moved above with font dropdown init
 
+// Text color swatches — same curated palette as garment picker
+const TEXT_COLOR_PRESETS = [
+  '#0c0c0d','#ffffff','#5b5e66','#a8a39c',
+  '#3D9E8C','#c8504a','#e0a82e','#3a6ec5',
+  '#c97ba0','#6c4ad1','#f97316','#16a34a',
+];
+(function buildTextColorSwatches(){
+  const wrap = document.getElementById('textColorSwatches');
+  if (!wrap) return;
+  TEXT_COLOR_PRESETS.forEach(hex => {
+    const sw = document.createElement('button');
+    sw.className = 'swatch';
+    sw.style.background = hex;
+    sw.title = hex;
+    sw.setAttribute('aria-label', hex);
+    sw.addEventListener('click', () => {
+      setTextColor(hex);
+      wrap.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+    });
+    wrap.appendChild(sw);
+  });
+  // Mark first as active by default
+  wrap.firstChild && wrap.firstChild.classList.add('active');
+})();
+
+function setTextColor(hex){
+  document.getElementById('textColor').value = hex;
+  document.getElementById('textColorHex').textContent        = hex.toUpperCase();
+  document.getElementById('textColorHexInline').textContent  = hex.toUpperCase();
+  const sel = state.layers.find(l => l.id === state.selectedId && l.type === 'text');
+  if (sel){ sel.color = hex; composeTexture(); }
+}
+
 document.getElementById('textColor').addEventListener('input', e => {
-  document.getElementById('textColorHex').textContent = e.target.value.toUpperCase();
-  // Live-update selected text layer color
+  const hex = e.target.value.toUpperCase();
+  document.getElementById('textColorHex').textContent       = hex;
+  document.getElementById('textColorHexInline').textContent = hex;
+  // deselect swatches when custom color chosen
+  document.querySelectorAll('#textColorSwatches .swatch').forEach(s => s.classList.remove('active'));
   const sel = state.layers.find(l => l.id === state.selectedId && l.type === 'text');
   if (sel){ sel.color = e.target.value; composeTexture(); }
 });
@@ -2489,13 +2652,37 @@ drawToggleBtn.addEventListener('click', () => setDrawMode(!state.drawMode));
 
 // ── TOOLBAR COLLAPSE TOGGLE ──────────────────────────────────────────────
 const toolbarCollapseBtn = document.getElementById('toolbarCollapseBtn');
+const toolbarCloseBtn   = document.getElementById('toolbarCloseBtn');
 const toolbarBody        = document.getElementById('toolbarBody');
 let   toolbarCollapsed   = false;
+
 toolbarCollapseBtn.addEventListener('click', e => {
   e.stopPropagation();
   toolbarCollapsed = !toolbarCollapsed;
   toolbarBody.classList.toggle('collapsed', toolbarCollapsed);
   toolbarCollapseBtn.textContent = toolbarCollapsed ? '+' : '−';
+});
+
+toolbarCloseBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  const toolbar = document.getElementById('drawToolbar');
+  // Animate out
+  toolbar.style.opacity  = '0';
+  toolbar.style.transform = (toolbar.classList.contains('positioned') ? 'scale(.92)' : 'translateX(-50%) scale(.92)');
+  toolbar.style.pointerEvents = 'none';
+  setTimeout(() => {
+    toolbar.classList.remove('show');
+    toolbar.style.opacity = '';
+    toolbar.style.transform = '';
+    toolbar.style.pointerEvents = '';
+  }, 240);
+  // Update the draw tab toggle button label
+  const dtb = document.getElementById('drawToolsToggleBtn');
+  if (dtb){
+    dtb.classList.remove('active');
+    const labelSpan = dtb.querySelector('.draw-open-label');
+    if (labelSpan) labelSpan.childNodes[2].textContent = ' Open drawing tools';
+  }
 });
 
 // ── BRUSH SIZE PREVIEW ───────────────────────────────────────────────────
@@ -2909,132 +3096,147 @@ function buildTextEditCard(layer){
 //  uploaded image layer — full drag / pinch / rotate support.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ASSETS = {
-  'Stars & Celestial': [
-    { emoji:'⭐', label:'Star' },
-    { emoji:'🌟', label:'Glow Star' },
-    { emoji:'✨', label:'Sparkle' },
-    { emoji:'💫', label:'Dizzy' },
-    { emoji:'🌙', label:'Moon' },
-    { emoji:'☀️', label:'Sun' },
-    { emoji:'🌈', label:'Rainbow' },
-    { emoji:'⚡', label:'Lightning' },
-    { emoji:'❄️', label:'Snowflake' },
-    { emoji:'🔥', label:'Fire' },
-  ],
-  'Fashion & Attitude': [
-    { emoji:'💎', label:'Diamond' },
-    { emoji:'👑', label:'Crown' },
-    { emoji:'🏆', label:'Trophy' },
-    { emoji:'💰', label:'Money Bag' },
-    { emoji:'🎯', label:'Target' },
-    { emoji:'🎨', label:'Palette' },
-    { emoji:'🦋', label:'Butterfly' },
-    { emoji:'🌺', label:'Flower' },
-    { emoji:'🌸', label:'Blossom' },
-    { emoji:'🌿', label:'Leaf' },
-  ],
-  'Symbols & Icons': [
-    { emoji:'❤️', label:'Heart' },
-    { emoji:'🖤', label:'Black Heart' },
-    { emoji:'💚', label:'Green Heart' },
-    { emoji:'♾️', label:'Infinity' },
-    { emoji:'☮️', label:'Peace' },
-    { emoji:'✌️', label:'Peace Sign' },
-    { emoji:'🤙', label:'Shaka' },
-    { emoji:'🤞', label:'Fingers Crossed' },
-    { emoji:'💥', label:'Explosion' },
-    { emoji:'🎭', label:'Masks' },
-  ],
-  'Street & Urban': [
-    { emoji:'🏙️', label:'City' },
-    { emoji:'🎤', label:'Mic' },
-    { emoji:'🎧', label:'Headphones' },
-    { emoji:'🎹', label:'Keys' },
-    { emoji:'🏀', label:'Basketball' },
-    { emoji:'⚽', label:'Soccer' },
-    { emoji:'🛹', label:'Skateboard' },
-    { emoji:'🏋️', label:'Lifting' },
-    { emoji:'🤖', label:'Robot' },
-    { emoji:'👾', label:'Alien' },
-  ],
-  'Nature & Animals': [
-    { emoji:'🐉', label:'Dragon' },
-    { emoji:'🦁', label:'Lion' },
-    { emoji:'🐯', label:'Tiger' },
-    { emoji:'🦅', label:'Eagle' },
-    { emoji:'🐺', label:'Wolf' },
-    { emoji:'🦊', label:'Fox' },
-    { emoji:'🌵', label:'Cactus' },
-    { emoji:'🍄', label:'Mushroom' },
-    { emoji:'🌊', label:'Wave' },
-    { emoji:'🏔️', label:'Mountain' },
-  ],
-  'Geometric Shapes': [
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 95,95 5,95" fill="#3D9E8C"/></svg>', label:'Triangle', emoji:'🔺' },
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="80" height="80" fill="#3D9E8C"/></svg>', label:'Square', emoji:'🟩' },
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="45" fill="#3D9E8C"/></svg>', label:'Circle', emoji:'🟢' },
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35" fill="#3D9E8C"/></svg>', label:'Star Shape', emoji:'⭐' },
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 100,50 50,95 0,50" fill="#3D9E8C"/></svg>', label:'Diamond', emoji:'🔷' },
-    { svg: '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><polygon points="25,5 75,5 100,50 75,95 25,95 0,50" fill="#3D9E8C"/></svg>', label:'Hexagon', emoji:'⬡' },
-  ],
-};
+/* =========================================================================
+   LOCAL ASSETS SYSTEM
+   ─────────────────────────────────────────────────────────────────────────
+   Loads design assets from assets/images/.
+
+   Asset manifest (optional): assets/images/manifest.json
+   Format: [{ "file":"star.png", "label":"Star", "category":"Shapes" }]
+
+   Without a manifest the panel shows a message prompting the user to
+   add files to assets/images/. Built-in SVG shapes are always shown
+   as a "Built-in Shapes" fallback category.
+   ========================================================================= */
+
+// Built-in SVG shapes — always available, no files required
+const BUILTIN_SHAPES = [
+  { svg:'<svg viewBox="0 0 100 100"><polygon points="50,4 61,35 95,35 68,57 79,91 50,70 21,91 32,57 5,35 39,35" fill="#3D9E8C"/></svg>', label:'Star' },
+  { svg:'<svg viewBox="0 0 100 100"><polygon points="50,6 94,94 6,94" fill="#3D9E8C"/></svg>', label:'Triangle' },
+  { svg:'<svg viewBox="0 0 100 100"><rect x="8" y="8" width="84" height="84" rx="12" fill="#3D9E8C"/></svg>', label:'Square' },
+  { svg:'<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="#3D9E8C"/></svg>', label:'Circle' },
+  { svg:'<svg viewBox="0 0 100 100"><polygon points="50,6 100,50 50,94 0,50" fill="#3D9E8C"/></svg>', label:'Diamond' },
+  { svg:'<svg viewBox="0 0 100 100"><polygon points="25,6 75,6 100,50 75,94 25,94 0,50" fill="#3D9E8C"/></svg>', label:'Hexagon' },
+  { svg:'<svg viewBox="0 0 100 100"><path d="M50 10 Q90 50 50 90 Q10 50 50 10Z" fill="#3D9E8C"/></svg>', label:'Leaf' },
+  { svg:'<svg viewBox="0 0 100 100"><path d="M50 15 C70 15 85 30 85 50 C85 70 70 85 50 85 C30 85 15 70 15 50 C15 30 30 15 50 15Z M50 35 C40 35 33 42 33 50 C33 58 40 65 50 65 C60 65 67 58 67 50 C67 42 60 35 50 35Z" fill="#3D9E8C"/></svg>', label:'Ring' },
+];
 
 let assetsBuilt = false;
-function buildAssetsPanel(){
+
+async function buildAssetsPanel(){
   if (assetsBuilt) return;
   assetsBuilt = true;
+
   const container = document.getElementById('assetsContainer');
   container.innerHTML = '';
 
-  Object.entries(ASSETS).forEach(([category, items]) => {
-    const catLabel = document.createElement('div');
-    catLabel.className = 'assets-category-label';
-    catLabel.textContent = category;
-    container.appendChild(catLabel);
+  // ── 1. Try loading local assets/images/manifest.json ──
+  let localAssets = [];
+  try {
+    const res = await fetch('assets/images/manifest.json');
+    if (res.ok){
+      const manifest = await res.json();
+      localAssets = manifest.map(item => ({
+        src:      `assets/images/${item.file}`,
+        label:    item.label  || item.file.replace(/\.[^.]+$/, ''),
+        category: item.category || 'Custom Assets',
+      }));
+    }
+  } catch(_){
+    // No manifest — try a known filenames list
+    const COMMON_EXTENSIONS = ['png','jpg','jpeg','svg','webp','gif'];
+    const GUESSED_NAMES = [
+      'star','heart','crown','diamond','flame','lightning','flower',
+      'skull','rose','wave','mountain','sun','moon','tiger','eagle',
+      'dragon','logo','icon','badge','patch','graphic','sticker',
+    ];
+    for (const name of GUESSED_NAMES){
+      for (const ext of COMMON_EXTENSIONS){
+        try {
+          const url = `assets/images/${name}.${ext}`;
+          const r = await fetch(url, { method:'HEAD' });
+          if (r.ok){
+            localAssets.push({ src: url, label: name.charAt(0).toUpperCase()+name.slice(1), category:'Custom Assets' });
+            break;   // found this name, move to next
+          }
+        } catch(_){ /* not found */ }
+      }
+    }
+  }
 
-    const grid = document.createElement('div');
-    grid.className = 'assets-grid';
-
-    items.forEach(asset => {
-      const btn = document.createElement('button');
-      btn.className = 'asset-btn';
-      btn.title     = asset.label;
-      btn.textContent = asset.emoji;
-      btn.addEventListener('click', () => addAssetToModel(asset));
-      grid.appendChild(btn);
+  // ── 2. Render local assets grouped by category ──
+  if (localAssets.length > 0){
+    const byCategory = {};
+    localAssets.forEach(a => {
+      if (!byCategory[a.category]) byCategory[a.category] = [];
+      byCategory[a.category].push(a);
     });
-    container.appendChild(grid);
-  });
+
+    Object.entries(byCategory).forEach(([cat, items]) => {
+      _renderAssetCategory(container, cat, items, 'local');
+    });
+  } else {
+    // Show instructional empty state
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:18px;background:var(--surface-solid);border:1.5px dashed var(--surface-stroke);border-radius:14px;text-align:center;margin-bottom:18px;';
+    hint.innerHTML = `
+      <div style="font-size:28px;margin-bottom:8px;">📁</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:4px;">No custom assets yet</div>
+      <div style="font-size:11px;color:var(--ink-muted);line-height:1.6;">
+        Add images to <code style="background:var(--divider);padding:1px 5px;border-radius:4px;">assets/images/</code><br>
+        and optionally a <code style="background:var(--divider);padding:1px 5px;border-radius:4px;">manifest.json</code> to label them.
+      </div>`;
+    container.appendChild(hint);
+  }
+
+  // ── 3. Always show built-in SVG shapes ──
+  _renderAssetCategory(container, 'Built-in Shapes', BUILTIN_SHAPES, 'svg');
 }
 
-async function addAssetToModel(asset){
-  try {
-    let dataURL;
-    if (asset.svg){
-      // SVG asset → render to canvas
-      const blob = new Blob([asset.svg], { type: 'image/svg+xml' });
-      const url  = URL.createObjectURL(blob);
-      const img  = await loadImage(url);
-      const c = document.createElement('canvas');
-      c.width = c.height = 256;
-      c.getContext('2d').drawImage(img, 0, 0, 256, 256);
-      dataURL = c.toDataURL('image/png');
-      URL.revokeObjectURL(url);
+function _renderAssetCategory(container, title, items, kind){
+  const label = document.createElement('div');
+  label.className = 'assets-category-label';
+  label.textContent = title;
+  container.appendChild(label);
+
+  const grid = document.createElement('div');
+  grid.className = 'assets-grid';
+
+  items.forEach(asset => {
+    const btn = document.createElement('button');
+    btn.className = 'asset-btn';
+    btn.title     = asset.label;
+
+    if (kind === 'local'){
+      // Show actual image thumbnail
+      const img = document.createElement('img');
+      img.src = asset.src;
+      img.alt = asset.label;
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:8px;';
+      img.onerror = () => { btn.textContent = '🖼'; };
+      btn.appendChild(img);
+      btn.addEventListener('click', () => addLocalAssetToModel(asset));
     } else {
-      // Emoji asset → render to canvas via fillText
-      const c = document.createElement('canvas');
-      c.width = c.height = 256;
-      const ctx = c.getContext('2d');
-      ctx.font = '200px serif';
-      ctx.textAlign    = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(asset.emoji, 128, 140);
-      dataURL = c.toDataURL('image/png');
+      // SVG built-in — show SVG inline
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'width:60%;height:60%;display:flex;align-items:center;justify-content:center;';
+      wrapper.innerHTML = asset.svg;
+      const svgEl = wrapper.querySelector('svg');
+      if (svgEl){ svgEl.style.cssText = 'width:100%;height:100%;'; }
+      btn.appendChild(wrapper);
+      btn.addEventListener('click', () => addSvgAssetToModel(asset));
     }
 
-    const img   = await loadImage(dataURL);
-    const layer = createImageLayer(img, dataURL);
+    grid.appendChild(btn);
+  });
+
+  container.appendChild(grid);
+}
+
+async function addLocalAssetToModel(asset){
+  try {
+    const img = await loadImage(asset.src);
+    const layer = createImageLayer(img, asset.src);
     layer.name  = asset.label;
     state.layers.push(layer);
     state.selectedId = layer.id;
@@ -3043,16 +3245,45 @@ async function addAssetToModel(asset){
     rebuildLayerListUI();
     renderSelectedTransformUI();
     toast(`${asset.label} added — drag to position`);
-
-    // Switch to image tab so transform controls appear
-    document.querySelectorAll('.panel-tabs .tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    const imgTab = document.querySelector('.panel-tabs .tab[data-tab="image"]');
-    if (imgTab){ imgTab.classList.add('active'); document.getElementById('tab-image').classList.add('active'); }
+    _switchTab('image');
   } catch(e){
-    console.warn('[Assets]', e);
-    toast('Could not add asset', 'error');
+    console.warn('[Assets] local load failed:', e);
+    toast('Could not load asset', 'error');
   }
+}
+
+async function addSvgAssetToModel(asset){
+  try {
+    const blob = new Blob([asset.svg], { type:'image/svg+xml' });
+    const url  = URL.createObjectURL(blob);
+    const img  = await loadImage(url);
+    const c    = document.createElement('canvas');
+    c.width = c.height = 512;
+    c.getContext('2d').drawImage(img, 0, 0, 512, 512);
+    URL.revokeObjectURL(url);
+    const dataURL = c.toDataURL('image/png');
+    const rasterImg = await loadImage(dataURL);
+    const layer = createImageLayer(rasterImg, dataURL);
+    layer.name  = asset.label;
+    state.layers.push(layer);
+    state.selectedId = layer.id;
+    pushHistory();
+    composeTexture();
+    rebuildLayerListUI();
+    renderSelectedTransformUI();
+    toast(`${asset.label} added — drag to position`);
+    _switchTab('image');
+  } catch(e){
+    console.warn('[Assets] svg load failed:', e);
+    toast('Could not add shape', 'error');
+  }
+}
+
+function _switchTab(tabId){
+  document.querySelectorAll('.panel-tabs .tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const tab = document.querySelector(`.panel-tabs .tab[data-tab="${tabId}"]`);
+  if (tab){ tab.classList.add('active'); document.getElementById('tab-'+tabId).classList.add('active'); }
 }
 
 // Mode chip
@@ -3295,6 +3526,7 @@ async function init(){
   }, 350);
   animate();
   initFirebase();
+  initLocalFonts();   // load fonts from assets/fonts/ (or fallback to Google Fonts)
   rebuildLayerListUI();
 }
 
