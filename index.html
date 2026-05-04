@@ -1756,30 +1756,35 @@ function _drawSmoothStroke(ctx, pts){
     ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
   }
 }
+
+function drawLayer(layer){
+  if (!layer.visible) return;
   const cx = layer.x * CANVAS_SIZE;
   const cy = layer.y * CANVAS_SIZE;
   tctx.save();
   tctx.translate(cx, cy);
   tctx.rotate(layer.rotation);
   tctx.scale(layer.scale, layer.scale);
+  tctx.globalAlpha = layer.opacity !== undefined ? layer.opacity : 1;
   if (layer.type === 'image' && layer._img){
     const w = layer._img.naturalWidth;
     const h = layer._img.naturalHeight;
     tctx.drawImage(layer._img, -w/2, -h/2, w, h);
   } else if (layer.type === 'text'){
     tctx.fillStyle = layer.color;
-    tctx.font = `${layer.fontWeight || 600} ${layer.fontSize}px ${layer.font}`;
+    const style = layer.italic ? 'italic ' : '';
+    tctx.font = `${style}${layer.fontWeight || 600} ${layer.fontSize}px ${layer.font}`;
     tctx.textAlign = 'center';
     tctx.textBaseline = 'middle';
     const lines = String(layer.text || '').split('\n');
     const lh = layer.fontSize * 1.15;
     const total = (lines.length - 1) * lh;
     lines.forEach((line, i) => {
-      tctx.fillText(line, 0, i * lh - total/2);
+      tctx.fillText(line, 0, i * lh - total / 2);
     });
   }
   tctx.restore();
-
+}
 
 function getLayerBounds(layer){
   // Returns half-width/half-height in canvas px (after scale)
