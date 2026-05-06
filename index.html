@@ -2388,59 +2388,142 @@ const BUILTIN_FONTS = [
 ];
 
 /* =========================================================================
-   LOCAL FONT SYSTEM  (assets/fonts/ + optional manifest.json)
+   LOCAL FONT SYSTEM  (assets/fonts/ + manifest.json)
+   =========================================================================
+
+   manifest.json format (both old and new field names accepted):
+
+   [
+     {
+       "name":     "MyFont",          ← display name AND FontFace registration name
+       "file":     "myfont.ttf",      ← filename inside assets/fonts/
+       "weight":   400,               ← number OR "normal"/"bold" string
+       "style":    "normal",          ← "normal" | "italic"  (OR use "italic": true)
+       "category": "Custom"           ← groups fonts in dropdown
+     }
+   ]
    ========================================================================= */
+
 const FALLBACK_GOOGLE_URL =
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&family=Bebas+Neue&family=Anton&family=Russo+One&family=Black+Han+Sans&family=Oswald:wght@700&family=Teko:wght@600&family=Rajdhani:wght@700&family=Barlow+Condensed:ital,wght@1,700&family=Permanent+Marker&family=Special+Elite&display=swap';
 
-let FONT_FAMILIES = [];   // merged array populated by initLocalFonts()
+let FONT_FAMILIES = [];   // merged array: BUILTIN_FONTS + local fonts
+
+/* Normalise the weight field — accepts numbers, "normal", "bold" strings */
+function _normWeight(w){
+  if (!w) return '400';
+  if (typeof w === 'number') return String(w);
+  const map = { normal:'400', bold:'700', light:'300', medium:'500',
+                semibold:'600', 'semi-bold':'600', extrabold:'800', black:'900' };
+  return map[String(w).toLowerCase()] || String(w);
+}
+
+/* Build the CSS font-family value string used in ctx.font and previews.
+   The registered FontFace name is used directly — canvas resolves it
+   because we added it to document.fonts. */
+function _canvasFontValue(registeredName){
+  // Always quote the name in case it contains spaces
+  return `"${registeredName}", sans-serif`;
+}
 
 async function initLocalFonts(){
+  console.log('[Fonts] initLocalFonts() starting…');
   let localFonts = [];
 
-  // ── 1. Try manifest.json ──────────────────────────────────────────
+  // ── 1. Fetch and parse manifest.json ───────────────────────────────────
+  let manifest = null;
   try {
-    const res = await fetch('assets/fonts/manifest.json');
+    const res = await fetch('assets/fonts/manifest.json', { cache: 'no-cache' });
     if (res.ok){
-      const manifest = await res.json();
-      for (const entry of manifest){
-        const url = `assets/fonts/${entry.file}`;
-        try {
-          const ff = new FontFace(entry.name, `url('${url}')`, {
-            weight: String(entry.weight || 400),
-            style:  entry.italic ? 'italic' : 'normal',
-          });
-          const loaded = await ff.load();
-          document.fonts.add(loaded);
-          localFonts.push({
-            name:     entry.name,
-            value:    entry.family || `"${entry.name}", sans-serif`,
-            weight:   entry.weight   || 400,
-            italic:   entry.italic   || false,
-            category: entry.category || 'Custom',
-            local:    true,
-          });
-        } catch(e){ console.warn(`[Fonts] ${entry.file}:`, e.message); }
+      manifest = await res.json();
+      console.log(`[Fonts] manifest.json loaded — ${manifest.length} font(s) declared`);
+    } else {
+      console.log(`[Fonts] manifest.json not found (HTTP ${res.status}) — using built-in fonts only`);
+    }
+  } catch(err){
+    console.warn('[Fonts] Could not fetch manifest.json:', err.message,
+      '— Make sure you are running via a local server (not file://)');
+  }
+
+  // ── 2. Load each font declared in manifest ──────────────────────────────
+  if (Array.isArray(manifest)){
+    for (const entry of manifest){
+      // Validate required fields
+      if (!entry.name || !entry.file){
+        console.warn('[Fonts] Skipping entry — missing "name" or "file":', entry);
+        continue;
+      }
+
+      const fontUrl  = `assets/fonts/${entry.file}`;
+      // Accept both "style":"italic" and "italic":true
+      const isItalic = (entry.style === 'italic') || (entry.italic === true);
+      const weightStr = _normWeight(entry.weight);
+
+      console.log(`[Fonts] Loading "${entry.name}" from ${fontUrl} (weight:${weightStr}, italic:${isItalic})`);
+
+      try {
+        const ff = new FontFace(
+          entry.name,
+          `url('${fontUrl}')`,
+          { weight: weightStr, style: isItalic ? 'italic' : 'normal' }
+        );
+        const loaded = await ff.load();
+        document.fonts.add(loaded);
+
+        // canvas value uses the registered name (quoted for spaces)
+        const canvasValue = _canvasFontValue(entry.name);
+
+        localFonts.push({
+          name:     entry.name,
+          value:    canvasValue,
+          weight:   parseInt(weightStr, 10) || 400,
+          italic:   isItalic,
+          category: entry.category || 'Custom',
+          local:    true,
+        });
+        console.log(`[Fonts] ✓ Loaded: "${entry.name}"`);
+      } catch(err){
+        console.error(`[Fonts] ✗ Failed to load "${entry.name}" (${fontUrl}):`, err.message);
+        console.error('  → Check: (1) file exists at that path, (2) server is running, (3) filename case matches exactly');
       }
     }
-  } catch(_){ /* manifest not found */ }
+  }
 
-  // ── 2. Load built-in fonts from Google (canvas use only) ──────────
+  // ── 3. Load Google Fonts for built-in font set ──────────────────────────
   try {
-    const link = document.createElement('link');
-    link.rel  = 'stylesheet';
-    link.href = FALLBACK_GOOGLE_URL;
-    document.head.appendChild(link);
-    await new Promise(r => setTimeout(r, 400));
-  } catch(_){}
+    // Only inject once
+    if (!document.querySelector('link[data-gf-builtin]')){
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = FALLBACK_GOOGLE_URL;
+      link.setAttribute('data-gf-builtin', '1');
+      document.head.appendChild(link);
+      console.log('[Fonts] Google Fonts link injected for built-in fonts');
+    }
+    // Wait for Google Fonts CSS to be parsed and fonts to be available
+    // Use document.fonts.ready for reliability instead of a fixed timeout
+    await Promise.race([
+      document.fonts.ready,
+      new Promise(r => setTimeout(r, 2500))   // 2.5 s hard cap for slow mobile
+    ]);
+    console.log('[Fonts] document.fonts.ready resolved');
+  } catch(err){
+    console.warn('[Fonts] Google Fonts load warning:', err.message);
+  }
 
-  // ── 3. Merge: built-ins first, then local (marked) ───────────────
+  // ── 4. Merge: built-ins first, local fonts appended at bottom ──────────
   FONT_FAMILIES = [
     ...BUILTIN_FONTS,
     ...localFonts,
   ];
 
+  console.log(`[Fonts] FONT_FAMILIES ready — ${BUILTIN_FONTS.length} built-in + ${localFonts.length} local = ${FONT_FAMILIES.length} total`);
+
+  // ── 5. Build dropdown now that all fonts are registered ────────────────
   buildFontDropdown();
+
+  // ── 6. Seed text-input textarea with default font ─────────────────────
+  syncTextInputFont();
 }
 
 let activeFontIdx = 0;
@@ -2477,8 +2560,10 @@ function buildFontDropdown(){
       }
       const opt = document.createElement('div');
       opt.className = 'font-option' + (globalIdx === 0 ? ' active' : '');
+      // For DOM font-family: local fonts use the registered name directly (no extra quotes needed in CSS)
+      const cssFamily = f.local ? `"${f.name}", sans-serif` : f.value;
       opt.innerHTML = `
-        <div class="fo-preview" style="font-family:${f.value};font-weight:${f.weight||400};font-style:${f.italic?'italic':'normal'};">Aa</div>
+        <div class="fo-preview" style="font-family:${cssFamily};font-weight:${f.weight||400};font-style:${f.italic?'italic':'normal'};">Aa</div>
         <div class="fo-info">
           <div class="fo-name">${escapeHTML(f.name)}</div>
           <div class="fo-cat">${escapeHTML(f.category)}${f.local ? ' · Local' : ''}</div>
@@ -2487,7 +2572,7 @@ function buildFontDropdown(){
         activeFontIdx = globalIdx;
         fontDropdown.querySelectorAll('.font-option').forEach(o => o.classList.remove('active'));
         opt.classList.add('active');
-        fontSelectorPreview.style.fontFamily = f.value;
+        fontSelectorPreview.style.fontFamily = f.local ? `"${f.name}", sans-serif` : f.value;
         fontSelectorPreview.style.fontWeight = f.weight || 400;
         fontSelectorPreview.style.fontStyle  = f.italic ? 'italic' : 'normal';
         fontSelectorPreview.textContent = 'Aa — ' + f.name;
@@ -2838,10 +2923,12 @@ document.getElementById('addTextBtn').addEventListener('click', () => {
 // Live font preview in textarea — update textarea font-family whenever font changes
 function syncTextInputFont(){
   if (!FONT_FAMILIES.length) return;
-  const f  = FONT_FAMILIES[activeFontIdx];
+  const f  = FONT_FAMILIES[activeFontIdx] || FONT_FAMILIES[0];
   const ti = document.getElementById('textInput');
   if (ti){
-    ti.style.fontFamily  = f.value;
+    // DOM elements need "FontName", sans-serif (CSS family notation)
+    const cssFamily = f.local ? `"${f.name}", sans-serif` : f.value;
+    ti.style.fontFamily  = cssFamily;
     ti.style.fontWeight  = String(f.weight || 400);
     ti.style.fontStyle   = f.italic ? 'italic' : 'normal';
     ti.style.fontSize    = '16px';
