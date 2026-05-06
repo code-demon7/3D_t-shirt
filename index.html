@@ -1450,6 +1450,25 @@ textarea.text-input{ resize: none; min-height: 80px; line-height: 1.4; font-fami
   </div>
 </div>
 
+<!-- Save-name modal -->
+<div class="modal" id="saveNameModal">
+  <div class="modal-card">
+    <h3>Name your design</h3>
+    <p>Give this design a name so you can find it later.</p>
+    <input type="text" id="designNameInput" class="text-input"
+      placeholder="e.g. Summer Drop #1"
+      style="margin-bottom:14px;"
+      maxlength="60">
+    <div style="display:flex;gap:8px;">
+      <button class="btn ghost" id="cancelSaveBtn" style="flex:1;">Cancel</button>
+      <button class="btn accent" id="confirmSaveBtn" style="flex:2;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Save
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Three.js + extras via importmap -->
 <script type="importmap">
 {
@@ -1622,8 +1641,7 @@ function getOrCreateLocalUserId(){
 const CANVAS_SIZE = 1024;
 const state = {
   baseColor: '#f4f3f0',
-  layers: [],            // images & text layers
-  strokes: [],           // freehand strokes
+  layers: [],         // images, text AND draw layers — all first-class
   selectedId: null,
   drawMode: false,
   drawColor: '#0c0c0d',
@@ -1648,22 +1666,18 @@ function refreshUndoButtons(){
   document.getElementById('redoBtn').toggleAttribute('disabled', redoStack.length === 0);
 }
 function serializeState(){
-  // Strokes can grow large — store points compactly
   return JSON.stringify({
     baseColor: state.baseColor,
-    layers: state.layers.map(l => ({...l, _img: undefined, src: l.src || null})),
-    strokes: state.strokes,
-    bgColor: state.bgColor,
+    bgColor:   state.bgColor,
+    layers:    state.layers.map(l => ({...l, _img: undefined, src: l.src || null})),
   });
 }
 function restoreState(json){
   const s = JSON.parse(json);
   state.baseColor = s.baseColor;
-  state.bgColor = s.bgColor || state.bgColor;
-  state.strokes = s.strokes || [];
-  state.layers = [];
-  // Re-hydrate image layers
-  const promises = (s.layers || []).map(async layerData => {
+  state.bgColor   = s.bgColor || state.bgColor;
+  state.layers    = [];
+  const promises  = (s.layers || []).map(async layerData => {
     if (layerData.type === 'image' && layerData.src){
       const img = await loadImage(layerData.src);
       state.layers.push({ ...layerData, _img: img });
@@ -1762,37 +1776,42 @@ function composeTexture(){
 }
 function _doComposeTexture(){
   _composeQueued = false;
-  // Base
+  // Base colour
   tctx.fillStyle = state.baseColor;
   tctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
 
-  // Strokes — rendered as smooth Catmull-Rom splines
-  for (const stroke of state.strokes){
-    if (stroke.points.length < 1) continue;
-    tctx.save();
-    tctx.globalAlpha = stroke.opacity !== undefined ? stroke.opacity : 1.0;
-    tctx.strokeStyle = stroke.color;
-    tctx.lineWidth   = stroke.size;
-    tctx.lineCap     = 'round';
-    tctx.lineJoin    = 'round';
-    tctx.beginPath();
-    _drawSmoothStroke(tctx, stroke.points);
-    tctx.stroke();
-    tctx.restore();
-  }
-
-  // Layers
+  // All layers in order (image, text, draw — fully interleaved)
   for (const layer of state.layers){
-    drawLayer(layer);
+    if (!layer.visible) continue;
+    if (layer.type === 'draw'){
+      _renderDrawLayer(tctx, layer);
+    } else {
+      drawLayer(layer);
+    }
   }
 
-  // Selection outline (purely visual, no extra layer)
+  // Selection outline (visual only)
   const sel = state.layers.find(l => l.id === state.selectedId);
-  if (sel){
-    drawSelectionOutline(sel);
-  }
+  if (sel && sel.type !== 'draw') drawSelectionOutline(sel);
 
   designTexture.needsUpdate = true;
+}
+
+/* Render a draw-type layer (list of strokes) onto tctx */
+function _renderDrawLayer(ctx, layer){
+  for (const stroke of (layer.strokes || [])){
+    if (!stroke.points || stroke.points.length < 1) continue;
+    ctx.save();
+    ctx.globalAlpha = stroke.opacity !== undefined ? stroke.opacity : 1.0;
+    ctx.strokeStyle = stroke.color;
+    ctx.lineWidth   = stroke.size;
+    ctx.lineCap     = 'round';
+    ctx.lineJoin    = 'round';
+    ctx.beginPath();
+    _drawSmoothStroke(ctx, stroke.points);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /* _drawSmoothStroke — Catmull-Rom spline through stroke points
@@ -1839,7 +1858,7 @@ function drawLayer(layer){
   tctx.translate(cx, cy);
   tctx.rotate(layer.rotation);
   tctx.scale(layer.scale, layer.scale);
-  tctx.globalAlpha = layer.opacity !== undefined ? layer.opacity : 1;
+  tctx.globalAlpha = (layer.opacity !== undefined ? layer.opacity : 1);
   if (layer.type === 'image' && layer._img){
     const w = layer._img.naturalWidth;
     const h = layer._img.naturalHeight;
@@ -2152,13 +2171,36 @@ function onPointerDown(e){
     if (uv){
       controls.enabled = false;
       interaction.mode = 'draw';
-      interaction.currentStroke = {
+
+      // Create a new draw layer or append to the current active draw layer
+      // We always start a new stroke object; the draw layer accumulates strokes
+      const newStroke = {
         color:   state.drawColor,
         size:    state.brushSize,
         opacity: state.brushOpacity !== undefined ? state.brushOpacity : 1.0,
-        points: [{ x: uv.canvasX, y: uv.canvasY }],
+        points:  [{ x: uv.canvasX, y: uv.canvasY }],
       };
-      state.strokes.push(interaction.currentStroke);
+
+      // Append to existing active draw layer if the last layer is also a draw layer
+      const lastLayer = state.layers[state.layers.length - 1];
+      if (lastLayer && lastLayer.type === 'draw' && lastLayer._active){
+        interaction.currentStroke = newStroke;
+        lastLayer.strokes.push(newStroke);
+        interaction.drawLayerId = lastLayer.id;
+      } else {
+        // Create a new draw layer
+        const drawLayer = {
+          id:       nextLayerId++,
+          type:     'draw',
+          strokes:  [newStroke],
+          visible:  true,
+          name:     'Drawing',
+          _active:  true,   // mark as currently being drawn into
+        };
+        state.layers.push(drawLayer);
+        interaction.currentStroke  = newStroke;
+        interaction.drawLayerId    = drawLayer.id;
+      }
       composeTexture();
     }
     return;
@@ -2269,6 +2311,8 @@ function onPointerUp(e){
   interaction.pointers.delete(e.pointerId);
   if (interaction.pointers.size === 0){
     if (interaction.mode === 'draw' && interaction.currentStroke){
+      // Mark the draw layer as no longer active (new strokes next time create a new layer)
+      // Keep _active=true so more strokes are added during the same draw session
       pushHistory();
       interaction.currentStroke = null;
     } else if (interaction.mode === 'move' || interaction.mode === 'transform'){
@@ -2448,12 +2492,29 @@ function buildFontDropdown(){
         fontSelectorPreview.style.fontStyle  = f.italic ? 'italic' : 'normal';
         fontSelectorPreview.textContent = 'Aa — ' + f.name;
         fontDropdown.classList.remove('open');
+        // Live-update text input font preview
+        const ti = document.getElementById('textInput');
+        if (ti){ ti.style.fontFamily = f.value; ti.style.fontWeight = f.weight || 400; }
+        syncTextInputFont();
         const sel = state.layers.find(l => l.id === state.selectedId && l.type === 'text');
         if (sel){ sel.font = f.value; sel.fontWeight = f.weight || 400; sel.italic = f.italic || false; composeTexture(); }
       }
+
+      // Click for mouse
       opt.addEventListener('click', applyFont);
-      // Also handle touchend for iOS where click can be delayed
-      opt.addEventListener('touchend', e => { e.preventDefault(); applyFont(); }, { passive: false });
+
+      // Touch: record touchstart position, only select if finger didn't scroll
+      let _touchStartY = 0;
+      opt.addEventListener('touchstart', e => {
+        _touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+      opt.addEventListener('touchend', e => {
+        const dy = Math.abs(e.changedTouches[0].clientY - _touchStartY);
+        if (dy < 8){   // tap threshold — less than 8px movement = intentional tap
+          e.preventDefault();
+          applyFont();
+        }
+      }, { passive: false });
       fontDropdown.appendChild(opt);
     });
   }
@@ -2468,6 +2529,8 @@ function buildFontDropdown(){
     fontSelectorPreview.style.fontWeight = first.weight || 400;
     fontSelectorPreview.textContent      = 'Aa — ' + first.name;
   }
+  // Seed the text input textarea font
+  syncTextInputFont();
 }
 
 fontSelectorBtn.addEventListener('click', e => {
@@ -2542,16 +2605,16 @@ drawToolsToggleBtn.addEventListener('click', () => {
     toolbar.classList.remove('show');
     drawToolsToggleBtn.classList.remove('active');
     drawToolsToggleBtn.querySelector('.draw-open-label svg').style.transform = '';
-    drawToolsToggleBtn.querySelector('.draw-open-label span, .draw-open-label svg').parentElement;
-    // Update label text via first text node inside label span
     const labelSpan = drawToolsToggleBtn.querySelector('.draw-open-label');
     labelSpan.childNodes[2].textContent = ' Open drawing tools';
+    // Also exit draw mode
+    if (state.drawMode) setDrawMode(false);
   } else {
     toolbar.classList.add('show');
     drawToolsToggleBtn.classList.add('active');
     const labelSpan = drawToolsToggleBtn.querySelector('.draw-open-label');
     labelSpan.childNodes[2].textContent = ' Close drawing tools';
-    // Position it nicely if not yet positioned
+    // Position if not yet dragged
     if (!toolbar.classList.contains('positioned')){
       const rect = toolbar.getBoundingClientRect();
       toolbar.style.left   = Math.max(12, (window.innerWidth - rect.width) / 2) + 'px';
@@ -2559,6 +2622,8 @@ drawToolsToggleBtn.addEventListener('click', () => {
       toolbar.style.transform = 'none';
       toolbar.classList.add('positioned');
     }
+    // Auto-activate draw mode immediately — no extra click needed
+    if (!state.drawMode) setDrawMode(true);
   }
 });
 
@@ -2741,7 +2806,7 @@ document.getElementById('textColor').addEventListener('input', e => {
 document.getElementById('addTextBtn').addEventListener('click', () => {
   const text = document.getElementById('textInput').value.trim();
   if (!text) { toast('Type something first.', 'error'); return; }
-  const f = FONT_FAMILIES[activeFontIdx];
+  const f = FONT_FAMILIES.length ? FONT_FAMILIES[activeFontIdx] : { value: 'sans-serif', weight: 400, italic: false };
   const fontSize = parseInt(document.getElementById('textSizeSlider').value, 10);
   const layer = {
     id: nextLayerId++,
@@ -2756,6 +2821,7 @@ document.getElementById('addTextBtn').addEventListener('click', () => {
     scale: 1,
     rotation: 0,
     visible: true,
+    opacity: 1,
     name: text.slice(0, 18),
   };
   state.layers.push(layer);
@@ -2764,8 +2830,31 @@ document.getElementById('addTextBtn').addEventListener('click', () => {
   composeTexture();
   rebuildLayerListUI();
   renderSelectedTransformUI();
+  // Reset input but keep font preview active
   document.getElementById('textInput').value = '';
   toast('Text added');
+});
+
+// Live font preview in textarea — update textarea font-family whenever font changes
+function syncTextInputFont(){
+  if (!FONT_FAMILIES.length) return;
+  const f  = FONT_FAMILIES[activeFontIdx];
+  const ti = document.getElementById('textInput');
+  if (ti){
+    ti.style.fontFamily  = f.value;
+    ti.style.fontWeight  = String(f.weight || 400);
+    ti.style.fontStyle   = f.italic ? 'italic' : 'normal';
+    ti.style.fontSize    = '16px';
+    ti.style.lineHeight  = '1.5';
+    ti.style.letterSpacing = '0';
+  }
+}
+// Also update text size slider → preview
+document.getElementById('textSizeSlider').addEventListener('input', function(){
+  document.getElementById('textSizeVal').textContent = this.value;
+  // live update selected text layer
+  const sel = state.layers.find(l => l.id === state.selectedId && l.type === 'text');
+  if (sel){ sel.fontSize = parseInt(this.value, 10); composeTexture(); }
 });
 
 // Draw mode
@@ -2793,6 +2882,10 @@ function showDrawTip(){
 
 function setDrawMode(on){
   state.drawMode = on;
+  if (!on){
+    // Seal all active draw layers so next draw session creates a fresh layer
+    state.layers.forEach(l => { if (l.type === 'draw') l._active = false; });
+  }
   drawToggleBtn.innerHTML = on
     ? `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg> Exit draw mode`
     : `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg> Enter draw mode`;
@@ -2881,18 +2974,27 @@ document.getElementById('brushOpacity').addEventListener('input', e => {
 });
 
 document.getElementById('undoStrokeBtn').addEventListener('click', () => {
-  if (state.strokes.length){
-    state.strokes.pop();
-    pushHistory();
-    composeTexture();
+  // Find the last draw layer and remove its last stroke
+  for (let i = state.layers.length - 1; i >= 0; i--){
+    const l = state.layers[i];
+    if (l.type === 'draw' && l.strokes && l.strokes.length > 0){
+      l.strokes.pop();
+      if (l.strokes.length === 0) state.layers.splice(i, 1);   // remove empty layer
+      pushHistory();
+      composeTexture();
+      rebuildLayerListUI();
+      return;
+    }
   }
 });
 document.getElementById('clearDrawBtn').addEventListener('click', () => {
-  if (!state.strokes.length) return;
-  state.strokes = [];
+  const hadDraw = state.layers.some(l => l.type === 'draw');
+  if (!hadDraw) return;
+  state.layers = state.layers.filter(l => l.type !== 'draw');
   pushHistory();
   composeTexture();
-  toast('Strokes cleared');
+  rebuildLayerListUI();
+  toast('Drawing cleared');
 });
 
 // ── DRAGGABLE DRAW TOOLBAR ───────────────────────────────────────────────
@@ -3038,27 +3140,33 @@ document.querySelectorAll('.panel-tabs .tab').forEach(tab => {
 // Layer list
 function rebuildLayerListUI(){
   const list = document.getElementById('layerList');
-  if (state.layers.length === 0 && state.strokes.length === 0){
+  if (state.layers.length === 0){
     list.innerHTML = '<div class="empty-state">No assets yet — upload an image, add text, or draw.</div>';
     return;
   }
   list.innerHTML = '';
-  // Layers (top first in UI)
+  // Layers in reverse (top of stack first in UI)
   for (let i = state.layers.length - 1; i >= 0; i--){
     const l = state.layers[i];
     const item = document.createElement('div');
     item.className = 'layer-item' + (l.id === state.selectedId ? ' active' : '');
+
     let thumbHTML = '';
     if (l.type === 'image' && l.src){
       thumbHTML = `<div class="thumb"><img src="${l.src}" alt=""></div>`;
     } else if (l.type === 'text'){
       thumbHTML = `<div class="thumb" style="font-family:${l.font}; font-weight:${l.fontWeight||600}; color:${l.color}; font-size:14px;">T</div>`;
+    } else if (l.type === 'draw'){
+      thumbHTML = `<div class="thumb" style="font-size:18px;">✏️</div>`;
     }
+
+    const strokeCount = l.type === 'draw' ? ` · ${l.strokes.length} stroke${l.strokes.length !== 1 ? 's' : ''}` : '';
+
     item.innerHTML = `
       ${thumbHTML}
       <div class="meta">
         <div class="t">${escapeHTML(l.type === 'text' ? l.text : l.name)}</div>
-        <div class="s">${l.type}</div>
+        <div class="s">${l.type}${strokeCount}</div>
       </div>
       <div class="actions">
         <button class="mini-btn" data-act="up" title="Bring forward"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg></button>
@@ -3077,48 +3185,20 @@ function rebuildLayerListUI(){
       const idx = state.layers.indexOf(l);
       if (idx < state.layers.length - 1){
         [state.layers[idx], state.layers[idx+1]] = [state.layers[idx+1], state.layers[idx]];
-        pushHistory();
-        rebuildLayerListUI();
-        composeTexture();
+        pushHistory(); rebuildLayerListUI(); composeTexture();
       }
     });
     item.querySelector('[data-act="down"]').addEventListener('click', () => {
       const idx = state.layers.indexOf(l);
       if (idx > 0){
         [state.layers[idx], state.layers[idx-1]] = [state.layers[idx-1], state.layers[idx]];
-        pushHistory();
-        rebuildLayerListUI();
-        composeTexture();
+        pushHistory(); rebuildLayerListUI(); composeTexture();
       }
     });
     item.querySelector('[data-act="del"]').addEventListener('click', () => {
       state.layers = state.layers.filter(x => x !== l);
       if (state.selectedId === l.id) state.selectedId = null;
-      pushHistory();
-      rebuildLayerListUI();
-      renderSelectedTransformUI();
-      composeTexture();
-    });
-    list.appendChild(item);
-  }
-  if (state.strokes.length){
-    const item = document.createElement('div');
-    item.className = 'layer-item';
-    item.innerHTML = `
-      <div class="thumb">✏</div>
-      <div class="meta">
-        <div class="t">Freehand drawing</div>
-        <div class="s">${state.strokes.length} stroke${state.strokes.length>1?'s':''}</div>
-      </div>
-      <div class="actions">
-        <button class="mini-btn" data-act="del" title="Clear strokes"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16"/></svg></button>
-      </div>
-    `;
-    item.querySelector('[data-act="del"]').addEventListener('click', () => {
-      state.strokes = [];
-      pushHistory();
-      rebuildLayerListUI();
-      composeTexture();
+      pushHistory(); rebuildLayerListUI(); renderSelectedTransformUI(); composeTexture();
     });
     list.appendChild(item);
   }
@@ -3143,6 +3223,7 @@ function renderSelectedTransformUI(){
 function buildTransformCard(layer){
   const card = document.createElement('div');
   card.className = 'transform-card';
+  const opacityPct = Math.round((layer.opacity !== undefined ? layer.opacity : 1) * 100);
   card.innerHTML = `
     <div class="head">
       <span class="t">Selected — ${escapeHTML(layer.name)}</span>
@@ -3160,22 +3241,25 @@ function buildTransformCard(layer){
     <div class="field"><label>Position Y <b>${Math.round(layer.y*100)}%</b></label>
       <input type="range" min="0" max="100" step="1" value="${Math.round(layer.y*100)}" data-prop="y">
     </div>
+    <div class="field"><label>Opacity <b>${opacityPct}%</b></label>
+      <input type="range" min="0" max="100" step="1" value="${opacityPct}" data-prop="opacity">
+    </div>
   `;
   card.querySelectorAll('input[type="range"]').forEach(r => {
     r.addEventListener('input', e => {
       const v = parseInt(e.target.value, 10);
       const p = e.target.dataset.prop;
-      if (p === 'scale') layer.scale = v / 100;
+      if      (p === 'scale')    layer.scale    = v / 100;
       else if (p === 'rotation') layer.rotation = v * Math.PI / 180;
-      else if (p === 'x') layer.x = v / 100;
-      else if (p === 'y') layer.y = v / 100;
+      else if (p === 'x')       layer.x        = v / 100;
+      else if (p === 'y')       layer.y        = v / 100;
+      else if (p === 'opacity')  layer.opacity  = v / 100;
       composeTexture();
-      // Update label
-      e.target.previousElementSibling || null;
       const labelB = e.target.parentElement.querySelector('label b');
       if (labelB){
-        if (p === 'scale') labelB.textContent = (layer.scale*100).toFixed(0) + '%';
+        if      (p === 'scale')    labelB.textContent = (layer.scale*100).toFixed(0) + '%';
         else if (p === 'rotation') labelB.textContent = Math.round(layer.rotation*180/Math.PI) + '°';
+        else if (p === 'opacity')  labelB.textContent = Math.round(layer.opacity*100) + '%';
         else labelB.textContent = Math.round((p === 'x' ? layer.x : layer.y)*100) + '%';
       }
     });
@@ -3184,10 +3268,7 @@ function buildTransformCard(layer){
   card.querySelector('[data-act="del"]').addEventListener('click', () => {
     state.layers = state.layers.filter(x => x !== layer);
     state.selectedId = null;
-    pushHistory();
-    composeTexture();
-    rebuildLayerListUI();
-    renderSelectedTransformUI();
+    pushHistory(); composeTexture(); rebuildLayerListUI(); renderSelectedTransformUI();
   });
   return card;
 }
@@ -3521,15 +3602,32 @@ function getPreviewDataURL(maxDim = 512){
   return c.toDataURL('image/jpeg', 0.7);
 }
 
-document.getElementById('saveDesignBtn').addEventListener('click', async () => {
-  const data = serializeStateForExport();
+// Save — open name modal first
+document.getElementById('saveDesignBtn').addEventListener('click', () => {
+  const modal = document.getElementById('saveNameModal');
+  document.getElementById('designNameInput').value = '';
+  modal.classList.add('show');
+  setTimeout(() => document.getElementById('designNameInput').focus(), 120);
+});
+
+document.getElementById('cancelSaveBtn').addEventListener('click', () => {
+  document.getElementById('saveNameModal').classList.remove('show');
+});
+
+document.getElementById('confirmSaveBtn').addEventListener('click', async () => {
+  const designName = document.getElementById('designNameInput').value.trim() || 'Untitled Design';
+  document.getElementById('saveNameModal').classList.remove('show');
+
+  const data    = serializeStateForExport();
   const preview = getPreviewDataURL();
-  const id = 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-  const record = {
+  const id      = 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const record  = {
     id,
+    designName,
     userId:      firebaseUser.uid,
     userEmail:   firebaseUser.email       || '',
     displayName: firebaseUser.displayName || '',
+    phone:       firebaseUser.phone       || '',
     kind:        'saved',
     design:      data,
     preview,
@@ -3542,13 +3640,12 @@ document.getElementById('saveDesignBtn').addEventListener('click', async () => {
     btn.disabled = true; btn.textContent = 'Saving…';
     try{
       const { setDoc, doc, serverTimestamp } = firestore;
-      // Collection: user_designs/{uid}/designs/{id}
       await setDoc(
         doc(firestore.db, 'user_designs', firebaseUser.uid, 'designs', id),
         { ...record, savedAt: serverTimestamp() }
       );
-      toast('Saved to cloud ✓', 'success');
-      _notifyFlutter('design_saved', { uid: firebaseUser.uid, id });
+      toast(`"${designName}" saved ✓`, 'success');
+      _notifyFlutter('design_saved', { uid: firebaseUser.uid, id, designName });
     } catch(err){
       console.warn('[Save]', err);
       toast('Cloud save failed — kept locally', 'error');
@@ -3559,27 +3656,36 @@ document.getElementById('saveDesignBtn').addEventListener('click', async () => {
     }
   } else {
     saveLocal(record);
-    toast('Design saved (local)', 'success');
+    toast(`"${designName}" saved`, 'success');
   }
   rebuildSavedDesignsList();
 });
 
+// Also submit on Enter key in name input
+document.getElementById('designNameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('confirmSaveBtn').click();
+});
+
+// Submit to Studio — renamed, includes full user data from Flutter bridge
 document.getElementById('submitDesignBtn').addEventListener('click', async () => {
-  const data = serializeStateForExport();
+  const data    = serializeStateForExport();
   const preview = getPreviewDataURL();
-  const id = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
-  const record = {
+  const id      = 's_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const record  = {
     id,
+    // Full user info from Flutter bridge
     userId:      firebaseUser.uid,
     userEmail:   firebaseUser.email       || '',
     displayName: firebaseUser.displayName || '',
-    kind:        'submission',
+    phone:       firebaseUser.phone       || '',   // mobile number from Flutter
+    // Full design data for admin review
     design:      data,
     preview,
     submittedAt: Date.now(),
     status:      'pending',
     reviewedAt:  null,
     adminNotes:  '',
+    kind:        'submission',
   };
 
   if (firebaseReady && firestore){
@@ -3587,7 +3693,6 @@ document.getElementById('submitDesignBtn').addEventListener('click', async () =>
     btn.disabled = true; btn.textContent = 'Submitting…';
     try{
       const { addDoc, collection, serverTimestamp } = firestore;
-      // Top-level collection: submitted_designs — admin dashboard queries this
       await addDoc(
         collection(firestore.db, 'submitted_designs'),
         { ...record, submittedAt: serverTimestamp() }
@@ -3617,17 +3722,19 @@ document.getElementById('closeSubmitModal').addEventListener('click', () => {
 });
 
 function serializeStateForExport(){
+  const drawLayers = state.layers.filter(l => l.type === 'draw');
+  const totalStrokes = drawLayers.reduce((n, l) => n + (l.strokes ? l.strokes.length : 0), 0);
   return {
     baseColor: state.baseColor,
-    bgColor: state.bgColor,
+    bgColor:   state.bgColor,
     layers: state.layers.map(l => {
       const out = { ...l };
-      delete out._img;
+      delete out._img;    // do not serialise HTMLImageElement
+      delete out._active; // internal flag, not needed in export
       return out;
     }),
-    strokeCount: state.strokes.length,
-    strokes: state.strokes,
-    timestamp: Date.now(),
+    strokeCount: totalStrokes,
+    timestamp:   Date.now(),
   };
 }
 function saveLocal(record, kind = 'designs'){
@@ -3694,7 +3801,7 @@ function renderSavedList(designs){
         baseColor: d.design.baseColor,
         bgColor: d.design.bgColor,
         layers: d.design.layers,
-        strokes: d.design.strokes || [],
+        strokes: [],   // draw strokes are now embedded in layers as draw-type layers
       });
       pushHistory();
       undoSuspended = true;
