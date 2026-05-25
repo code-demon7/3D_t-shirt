@@ -1639,6 +1639,22 @@ function getOrCreateLocalUserId(){
    STATE
    ========================================================================= */
 const CANVAS_SIZE = 1024;
+
+/* ── Drawing stability constants ──────────────────────────────────────────
+   UV_JUMP_THRESHOLD : max UV delta (0-1 space) allowed between consecutive
+                       stroke points before we treat it as a UV-seam jump.
+                       0.07 = 7% of texture width — real hand movement can't
+                       cover more than this in a single pointer-move event.
+   MAX_WORLD_JUMP    : max 3D distance (world units) between consecutive
+                       points. Acts as a secondary guard against seam jumps
+                       that slip past the UV check (e.g. near model edges).
+   UV_EDGE_MARGIN    : UV coordinates this close to 0 or 1 are clamped inward
+                       to avoid drawing on seam edges and bleeding across UV
+                       island boundaries.
+   ──────────────────────────────────────────────────────────────────────── */
+const UV_JUMP_THRESHOLD = 0.07;
+const MAX_WORLD_JUMP    = 0.35;
+const UV_EDGE_MARGIN    = 0.002;
 const state = {
   baseColor: '#f4f3f0',
   layers: [],         // images, text AND draw layers — all first-class
@@ -1797,32 +1813,43 @@ function _doComposeTexture(){
   designTexture.needsUpdate = true;
 }
 
-/* Render a draw-type layer (list of strokes) onto tctx */
+/* Render a draw-type layer (list of strokes) onto tctx.
+   Each stroke may be a full curved path OR a single-point dot (produced when
+   a seam break creates a 1-point segment).  Both cases are rendered correctly. */
 function _renderDrawLayer(ctx, layer){
   for (const stroke of (layer.strokes || [])){
     if (!stroke.points || stroke.points.length < 1) continue;
     ctx.save();
     ctx.globalAlpha = stroke.opacity !== undefined ? stroke.opacity : 1.0;
     ctx.strokeStyle = stroke.color;
+    ctx.fillStyle   = stroke.color;
     ctx.lineWidth   = stroke.size;
     ctx.lineCap     = 'round';
     ctx.lineJoin    = 'round';
     ctx.beginPath();
     _drawSmoothStroke(ctx, stroke.points);
-    ctx.stroke();
+    // Single-point strokes from seam breaks need fill (arc), not stroke
+    if (stroke.points.length === 1){
+      ctx.fill();
+    } else {
+      ctx.stroke();
+    }
     ctx.restore();
   }
 }
 
-/* _drawSmoothStroke — Catmull-Rom spline through stroke points
+/* _drawSmoothStroke — Catmull-Rom spline through stroke points.
    Produces fluid, natural-feeling brush curves identical to Procreate / Figma.
-   Tension 0.5 gives a good balance of smoothness without overshoot. */
+   Tension 0.5 gives a good balance of smoothness without overshoot.
+
+   SEAM SAFETY: consecutive canvas-space points that are suspiciously far apart
+   (MAX_CANVAS_SEGMENT_SQ) are treated as a hard break — moveTo instead of
+   bezierCurveTo — so seam-break segments never get reconnected by interpolation. */
 function _drawSmoothStroke(ctx, pts){
   if (pts.length === 0) return;
   if (pts.length === 1){
-    // Single tap — draw a small dot
+    // Single tap / seam-break dot — draw filled circle
     ctx.arc(pts[0].x, pts[0].y, ctx.lineWidth / 2, 0, Math.PI * 2);
-    ctx.fill();
     return;
   }
   if (pts.length === 2){
@@ -1831,14 +1858,29 @@ function _drawSmoothStroke(ctx, pts){
     return;
   }
 
+  // Maximum squared canvas distance between adjacent control points.
+  // If exceeded we treat it as a hard line break (moveTo) rather than
+  // interpolating through.  UV_JUMP_THRESHOLD * CANVAS_SIZE = ~72px for
+  // a 1024px canvas; we use a slightly larger value to only catch genuine
+  // runaway segments, not tight curves near model edges.
+  const MAX_CANVAS_SEG_SQ = (UV_JUMP_THRESHOLD * CANVAS_SIZE * 1.5) ** 2;
+
   // Catmull-Rom → cubic bezier conversion (tension = 0.5)
   const tension = 0.5;
   ctx.moveTo(pts[0].x, pts[0].y);
 
   for (let i = 0; i < pts.length - 1; i++){
-    const p0 = pts[Math.max(0, i - 1)];
     const p1 = pts[i];
     const p2 = pts[i + 1];
+
+    // Hard break guard: if p1→p2 exceeds the max segment length, lift pen
+    const segSq = (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+    if (segSq > MAX_CANVAS_SEG_SQ){
+      ctx.moveTo(p2.x, p2.y);
+      continue;
+    }
+
+    const p0 = pts[Math.max(0, i - 1)];
     const p3 = pts[Math.min(pts.length - 1, i + 2)];
 
     const cp1x = p1.x + (p2.x - p0.x) * tension / 3;
@@ -2058,31 +2100,71 @@ async function loadGarment(){
 }
 
 /* =========================================================================
-   RAYCAST → UV mapping (with Y inversion fix)
+   RAYCAST → UV mapping (with Y inversion fix + seam/edge hardening)
    ========================================================================= */
 const raycaster = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 
+// Reusable objects to avoid GC pressure during draw strokes
+const _normalMatrix = new THREE.Matrix3();
+const _faceNormal   = new THREE.Vector3();
+
 function getUVFromEvent(clientX, clientY){
   if (!garmentRoot) return null;
+
   const rect = renderer.domElement.getBoundingClientRect();
-  ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-  ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+  // Guard: pointer must be inside the canvas bounds
+  if (clientX < rect.left || clientX > rect.right ||
+      clientY < rect.top  || clientY > rect.bottom) return null;
+
+  ndc.x = ((clientX - rect.left) / rect.width)  *  2 - 1;
+  ndc.y = ((clientY - rect.top)  / rect.height) * -2 + 1;
+
   raycaster.setFromCamera(ndc, camera);
+
   const hits = raycaster.intersectObject(garmentRoot, true);
+
   for (const hit of hits){
-    if (hit.uv){
-      // With texture.flipY=false (the GLTF convention), canvas (px,py) samples UV (px/W, py/H).
-      // So canvasY maps directly to uv.v — no inversion. This is what fixes the inverted-drawing bug.
-      return {
-        u: hit.uv.x,
-        v: hit.uv.y,
-        canvasX: hit.uv.x * CANVAS_SIZE,
-        canvasY: hit.uv.y * CANVAS_SIZE,
-        point: hit.point,
-        face: hit.face,
-      };
+    // ── 1. Must have UV data ───────────────────────────────────────────
+    if (!hit.uv) continue;
+
+    const rawU = hit.uv.x;
+    const rawV = hit.uv.y;
+
+    // ── 2. Reject NaN / infinite UVs (corrupt geometry) ──────────────
+    if (!isFinite(rawU) || !isFinite(rawV)) continue;
+
+    // ── 3. Reject out-of-range UVs (from broken UV islands / seams) ──
+    if (rawU < 0 || rawU > 1 || rawV < 0 || rawV > 1) continue;
+
+    // ── 4. Reject backface hits — prevents drawing on inside of mesh ──
+    //    If face normal (world-space) points away from the camera ray the
+    //    user is touching the inside face, which causes seam bleed.
+    if (hit.face && hit.object.isMesh){
+      _normalMatrix.getNormalMatrix(hit.object.matrixWorld);
+      _faceNormal.copy(hit.face.normal).applyMatrix3(_normalMatrix).normalize();
+      // dot > 0.05 means normal faces AWAY from camera → backface → skip
+      if (_faceNormal.dot(raycaster.ray.direction) > 0.05) continue;
     }
+
+    // ── 5. Clamp UV away from seam edges to prevent edge bleed ───────
+    //    UV values extremely close to 0 or 1 sit right on UV island
+    //    boundaries; clamping them inward prevents seam bleeding.
+    const u = Math.max(UV_EDGE_MARGIN, Math.min(1 - UV_EDGE_MARGIN, rawU));
+    const v = Math.max(UV_EDGE_MARGIN, Math.min(1 - UV_EDGE_MARGIN, rawV));
+
+    // With texture.flipY=false (GLTF convention), canvasY maps to uv.v directly.
+    return {
+      u,
+      v,
+      canvasX:  u * CANVAS_SIZE,
+      canvasY:  v * CANVAS_SIZE,
+      point:    hit.point.clone(),   // clone — the hit object is reused by Three.js
+      face:     hit.face,
+      object:   hit.object,
+      distance: hit.distance,
+    };
   }
   return null;
 }
@@ -2091,15 +2173,19 @@ function getUVFromEvent(clientX, clientY){
    GESTURE / INTERACTION SYSTEM
    ========================================================================= */
 const interaction = {
-  active: false,
-  pointers: new Map(),     // pointerId -> {x, y, uv}
-  layerStart: null,        // initial state of selected layer at gesture start
+  active:          false,
+  pointers:        new Map(),   // pointerId → {x, y}
+  layerStart:      null,        // initial layer state at gesture start
   initialDistance: 0,
-  initialAngle: 0,
-  initialUV: null,         // canvas-space starting position
-  mode: null,              // 'move' | 'transform' | 'draw' | null
-  lastDrawUV: null,
-  currentStroke: null,
+  initialAngle:    0,
+  initialUV:       null,        // UV at start of move/transform gesture
+  mode:            null,        // 'move' | 'transform' | 'draw' | 'orbit-in-draw' | null
+  currentStroke:   null,        // stroke object currently being built
+  drawLayerId:     null,        // id of the draw layer accumulating this session
+
+  // ── Seam-protection state (reset on each new stroke) ──────────────────
+  lastDrawUV:      null,        // {u, v} of last accepted draw point
+  lastDrawPoint:   null,        // THREE.Vector3 of last accepted draw point
 };
 
 function pointerData(e){
@@ -2154,26 +2240,31 @@ function onPointerDown(e){
   interaction.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
   if (state.drawMode){
-    // ── TWO FINGERS in draw mode = orbit the model (not draw) ──
+    // ── TWO FINGERS in draw mode = orbit the model (not draw) ──────────
     if (interaction.pointers.size === 2){
-      // Hand off to OrbitControls for two-finger gesture
       interaction.mode = 'orbit-in-draw';
       controls.enabled = true;
       if (interaction.currentStroke){
-        // Finalise any in-progress stroke
+        // Finalise the in-progress stroke cleanly before handing to orbit
         pushHistory();
         interaction.currentStroke = null;
       }
+      // Reset seam-protection state so the next stroke starts fresh
+      interaction.lastDrawUV   = null;
+      interaction.lastDrawPoint = null;
       return;
     }
-    // ── SINGLE FINGER in draw mode = draw ──
+
+    // ── SINGLE FINGER in draw mode = draw ──────────────────────────────
     const uv = getUVFromEvent(e.clientX, e.clientY);
     if (uv){
       controls.enabled = false;
       interaction.mode = 'draw';
 
-      // Create a new draw layer or append to the current active draw layer
-      // We always start a new stroke object; the draw layer accumulates strokes
+      // Seed the seam-protection trackers with this first point
+      interaction.lastDrawUV   = { u: uv.u, v: uv.v };
+      interaction.lastDrawPoint = uv.point;   // already cloned in getUVFromEvent
+
       const newStroke = {
         color:   state.drawColor,
         size:    state.brushSize,
@@ -2181,25 +2272,24 @@ function onPointerDown(e){
         points:  [{ x: uv.canvasX, y: uv.canvasY }],
       };
 
-      // Append to existing active draw layer if the last layer is also a draw layer
+      // Append to existing active draw layer, or create a fresh one
       const lastLayer = state.layers[state.layers.length - 1];
       if (lastLayer && lastLayer.type === 'draw' && lastLayer._active){
         interaction.currentStroke = newStroke;
         lastLayer.strokes.push(newStroke);
         interaction.drawLayerId = lastLayer.id;
       } else {
-        // Create a new draw layer
         const drawLayer = {
-          id:       nextLayerId++,
-          type:     'draw',
-          strokes:  [newStroke],
-          visible:  true,
-          name:     'Drawing',
-          _active:  true,   // mark as currently being drawn into
+          id:      nextLayerId++,
+          type:    'draw',
+          strokes: [newStroke],
+          visible: true,
+          name:    'Drawing',
+          _active: true,
         };
         state.layers.push(drawLayer);
-        interaction.currentStroke  = newStroke;
-        interaction.drawLayerId    = drawLayer.id;
+        interaction.currentStroke = newStroke;
+        interaction.drawLayerId   = drawLayer.id;
       }
       composeTexture();
     }
@@ -2262,15 +2352,65 @@ function onPointerMove(e){
       const rawX = uv.canvasX;
       const rawY = uv.canvasY;
 
-      // Exponential smoothing (α=0.35) — reduces jitter while keeping responsiveness
+      // ── SEAM / EDGE JUMP DETECTION ─────────────────────────────────────
+      // Check both UV-space distance and 3D world-space distance.
+      // Either exceeding its threshold means the brush has jumped across a
+      // UV seam, a mesh boundary, or an impossible distance in one frame.
+      let seamJump = false;
+
+      if (interaction.lastDrawUV){
+        const du = Math.abs(uv.u - interaction.lastDrawUV.u);
+        const dv = Math.abs(uv.v - interaction.lastDrawUV.v);
+        if (du > UV_JUMP_THRESHOLD || dv > UV_JUMP_THRESHOLD){
+          seamJump = true;
+        }
+      }
+
+      // Secondary 3D distance guard (catches near-seam edge cases)
+      if (!seamJump && interaction.lastDrawPoint && uv.point){
+        if (interaction.lastDrawPoint.distanceTo(uv.point) > MAX_WORLD_JUMP){
+          seamJump = true;
+        }
+      }
+
+      if (seamJump){
+        // ── Break the stroke here and start a fresh segment ──────────────
+        // We do NOT connect across the seam — we create a new stroke object
+        // in the same layer so the gap is invisible in the layer list but the
+        // Catmull-Rom interpolation never bridges the UV discontinuity.
+        const layer = state.layers.find(l => l.id === interaction.drawLayerId);
+        if (layer){
+          const newSeg = {
+            color:   interaction.currentStroke.color,
+            size:    interaction.currentStroke.size,
+            opacity: interaction.currentStroke.opacity,
+            points:  [{ x: uv.canvasX, y: uv.canvasY }],
+          };
+          layer.strokes.push(newSeg);
+          interaction.currentStroke = newSeg;
+        }
+        // Reset seam trackers to the new position
+        interaction.lastDrawUV   = { u: uv.u, v: uv.v };
+        interaction.lastDrawPoint = uv.point;
+        // Don't call composeTexture yet — the segment has only 1 point (a dot
+        // would show; wait for the next move event to build a real segment)
+        return;
+      }
+
+      // ── SMOOTH DRAWING (exponential smoothing + minimum distance) ──────
+      // α = 0.35 gives a responsive but jitter-free feel.
+      // Smoothing is applied AFTER seam validation so it never bridges seams.
       const α = 0.35;
       const sx = last.x + α * (rawX - last.x);
       const sy = last.y + α * (rawY - last.y);
 
-      // Minimum distance threshold: skip micro-movements to avoid noisy segments
+      // Skip micro-movements to keep the point array lean
       const minDist = Math.max(1.5, interaction.currentStroke.size * 0.08);
       if (Math.hypot(sx - last.x, sy - last.y) > minDist){
         pts.push({ x: sx, y: sy });
+        // Advance seam-protection trackers with the smoothed UV position
+        interaction.lastDrawUV   = { u: uv.u, v: uv.v };
+        interaction.lastDrawPoint = uv.point;
         composeTexture();
       }
     }
@@ -2311,10 +2451,11 @@ function onPointerUp(e){
   interaction.pointers.delete(e.pointerId);
   if (interaction.pointers.size === 0){
     if (interaction.mode === 'draw' && interaction.currentStroke){
-      // Mark the draw layer as no longer active (new strokes next time create a new layer)
-      // Keep _active=true so more strokes are added during the same draw session
       pushHistory();
-      interaction.currentStroke = null;
+      interaction.currentStroke  = null;
+      // Reset seam-protection trackers so the NEXT stroke starts clean
+      interaction.lastDrawUV    = null;
+      interaction.lastDrawPoint = null;
     } else if (interaction.mode === 'move' || interaction.mode === 'transform'){
       pushHistory();
     }
@@ -2322,16 +2463,19 @@ function onPointerUp(e){
     if (interaction.mode === 'orbit-in-draw'){
       controls.enabled = false;
     }
-    interaction.mode = null;
-    interaction.layerStart = null;
+    interaction.mode        = null;
+    interaction.layerStart  = null;
     if (!state.drawMode){
       controls.enabled = true;
     }
     hideModeChip();
   } else if (interaction.mode === 'orbit-in-draw' && interaction.pointers.size === 1){
-    // Dropped to 1 finger — back to draw mode
+    // Dropped from two fingers to one — return to draw mode
     controls.enabled = false;
     interaction.mode = null;
+    // Reset seam trackers so the re-started stroke doesn't jump
+    interaction.lastDrawUV    = null;
+    interaction.lastDrawPoint = null;
   }
 }
 
