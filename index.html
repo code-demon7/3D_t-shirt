@@ -2584,22 +2584,44 @@ function _canvasFontValue(registeredName){
   return `"${registeredName}", sans-serif`;
 }
 
+// Resilient manifest loader — tries common filename-casing variants so the
+// same code works on case-insensitive (Windows) and case-sensitive
+// (Android / Flutter WebView / Linux) file systems. Returns { path, data }
+// for the first variant that parses, or null if none are found.
+async function _fetchManifest(dir){
+  const variants = ['manifest.json', 'Manifest.json', 'manifest.JSON', 'Manifest.JSON'];
+  for (const name of variants){
+    const path = dir + name;
+    try {
+      const res = await fetch(path, { cache: 'no-cache' });
+      if (res.ok){
+        const data = await res.json();
+        return { path, data };
+      }
+    } catch(_){ /* try next variant */ }
+  }
+  return null;
+}
+
 async function initLocalFonts(){
   console.log('[Fonts] initLocalFonts() starting…');
   let localFonts = [];
 
   // ── 1. Fetch and parse manifest.json ───────────────────────────────────
+  //  Filename casing differs between platforms (Windows = case-insensitive,
+  //  Android / Flutter WebView / Linux servers = case-sensitive), so try the
+  //  common variants until one resolves. See _fetchManifest() below.
   let manifest = null;
   try {
-    const res = await fetch('assets/fonts/manifest.json', { cache: 'no-cache' });
-    if (res.ok){
-      manifest = await res.json();
-      console.log(`[Fonts] manifest.json loaded — ${manifest.length} font(s) declared`);
+    const found = await _fetchManifest('assets/fonts/');
+    if (found){
+      manifest = found.data;
+      console.log(`[Fonts] manifest loaded (${found.path}) — ${manifest.length} font(s) declared`);
     } else {
-      console.log(`[Fonts] manifest.json not found (HTTP ${res.status}) — using built-in fonts only`);
+      console.warn('[Fonts] ✗ Missing manifest — no manifest.json found in assets/fonts/ — using built-in fonts only');
     }
   } catch(err){
-    console.warn('[Fonts] Could not fetch manifest.json:', err.message,
+    console.warn('[Fonts] Could not fetch font manifest:', err.message,
       '— Make sure you are running via a local server (not file://)');
   }
 
@@ -3739,16 +3761,27 @@ async function buildAssetsPanel(){
   const collContainer = document.getElementById('collectionsAssetsContainer');
   let localAssets = [];
   try {
-    const res = await fetch('assets/images/manifest.json');
-    if (res.ok){
-      const manifest = await res.json();
-      localAssets = manifest.map(item => ({
-        src:      `assets/images/${item.file}`,
-        label:    item.label    || item.file.replace(/\.[^.]+$/, ''),
-        category: item.category || 'My Assets',
-      }));
+    const found = await _fetchManifest('assets/images/');
+    if (found){
+      const manifest = found.data;
+      console.log(`[Assets] image manifest loaded (${found.path}) — ${manifest.length} asset(s) declared`);
+      localAssets = manifest
+        .filter(item => {
+          if (!item.file){ console.warn('[Assets] Skipping entry — missing "file":', item); return false; }
+          return true;
+        })
+        .map(item => ({
+          src:      `assets/images/${item.file}`,
+          label:    item.label    || item.file.replace(/\.[^.]+$/, ''),
+          category: item.category || 'My Assets',
+        }));
+    } else {
+      console.warn('[Assets] ✗ Missing manifest — no manifest.json found in assets/images/ — Collections will be empty');
     }
-  } catch(_){}
+  } catch(err){
+    console.warn('[Assets] Could not fetch image manifest:', err.message,
+      '— Make sure you are running via a local server (not file://)');
+  }
 
   if (localAssets.length > 0){
     const byCategory = {};
@@ -3790,7 +3823,11 @@ function _renderAssetCategory(container, title, items, kind){
       const img = document.createElement('img');
       img.src = asset.src; img.alt = asset.label;
       img.style.cssText = 'width:100%;height:100%;object-fit:contain;border-radius:8px;';
-      img.onerror = () => { btn.textContent = '🖼'; };
+      img.onload  = () => { console.log(`[Assets] ✓ thumbnail loaded: ${asset.src}`); };
+      img.onerror = () => {
+        console.error(`[Assets] ✗ Failed asset / missing file: ${asset.src} — check filename case matches manifest exactly`);
+        btn.textContent = '🖼';
+      };
       btn.appendChild(img);
       btn.addEventListener('click', () => addLocalAssetToModel(asset));
     } else {
@@ -3840,10 +3877,11 @@ async function addLocalAssetToModel(asset){
     composeTexture();
     rebuildLayerListUI();
     renderSelectedTransformUI();
+    console.log(`[Assets] ✓ image asset loaded onto canvas: ${asset.src}`);
     toast(`${asset.label} added — drag to position`);
     _switchTab('image');
   } catch(e){
-    console.warn('[Assets] local load failed:', e);
+    console.error(`[Assets] ✗ Failed asset — could not load ${asset.src}:`, e);
     toast('Could not load asset', 'error');
   }
 }
