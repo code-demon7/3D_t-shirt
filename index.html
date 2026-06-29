@@ -245,8 +245,15 @@ body{
     left: 0; right: 0;
     bottom: 0;
     border-radius: 24px 24px 0 0;
-    max-height: 78vh;
-    /* Peek: show tabs + handle always — transform shows only handle + tabs row */
+    /* Never cover the full screen — keep the product visible above the sheet.
+       Max expanded height ≈ 68% on phones (overridden to ~74% on tablets). */
+    max-height: 68vh;
+    will-change: transform;
+    /* Spring-like snap easing; live drag disables this via inline style. */
+    transition: transform .5s cubic-bezier(0.22, 1, 0.36, 1);
+    /* Peek fallback (before JS init): show handle + tabs row only.
+       JS drives the live transform once interactive. Keep 112px in sync
+       with the PEEK constant in the sheet controller. */
     transform: translateY(calc(100% - 112px));
   }
   .panel.expanded{ transform: translateY(0); }
@@ -257,6 +264,7 @@ body{
     cursor: grab;
     flex-shrink: 0;
     min-height: 32px;
+    touch-action: none; /* let the sheet own vertical drag gestures */
   }
   .sheet-handle .bar{
     width: 44px; height: 5px; border-radius: 999px;
@@ -284,6 +292,12 @@ body{
   .brand .name b{ display: none; } /* hide STUDIO label on tiny screens */
   /* Icon buttons larger tap area */
   .icon-btn{ width: 48px; height: 48px; }
+}
+
+/* Tablets (portrait / larger handhelds): allow a slightly taller sheet,
+   but still keep the product clearly visible above it. */
+@media (max-width: 900px) and (min-width: 601px){
+  .panel{ max-height: 74vh; }
 }
 
 /* Tabs --------------------------------------------------------------------- */
@@ -2802,7 +2816,7 @@ document.querySelectorAll('.panel-tabs .tab').forEach(tab => {
     document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
 
     if (window.innerWidth <= 900){
-      document.getElementById('panel').classList.add('expanded');
+      Sheet.open();
     }
     if (tab.dataset.tab === 'layers') rebuildLayerListUI();
     if (tab.dataset.tab === 'save')   rebuildSavedDesignsList();
@@ -3328,45 +3342,120 @@ document.getElementById('togglePanelBtn').addEventListener('click', () => {
   if (window.innerWidth > 900){
     panel.classList.toggle('collapsed');
   } else {
-    panel.classList.toggle('expanded');
+    Sheet.toggle();
   }
 });
 
-// Bottom sheet drag
+// ── BOTTOM SHEET — three-state draggable spring controller ────────────────
+// States: collapsed (peek) · half · expanded (max ≈ 68/74vh, never full screen).
+// Live 1:1 finger drag, velocity-aware snapping, spring easing. Mobile/tablet
+// only; on desktop the panel is a side panel and this is a no-op.
 const sheetHandle = document.getElementById('sheetHandle');
 const panelEl = document.getElementById('panel');
-let sheetDrag = null;
-sheetHandle.addEventListener('pointerdown', e => {
-  if (window.innerWidth > 900) return;
-  sheetHandle.setPointerCapture(e.pointerId);
-  sheetDrag = { startY: e.clientY, expanded: panelEl.classList.contains('expanded') };
-  panelEl.style.transition = 'none';
-});
-sheetHandle.addEventListener('pointermove', e => {
-  if (!sheetDrag) return;
-  // intentionally no live transform — just detect swipe direction on up
-});
-sheetHandle.addEventListener('pointerup', e => {
-  if (!sheetDrag) return;
-  panelEl.style.transition = '';
-  const dy = e.clientY - sheetDrag.startY;
-  if (sheetDrag.expanded){
-    // swipe down to collapse
-    if (dy > 60) panelEl.classList.remove('expanded');
-  } else {
-    // tap or swipe up to expand
-    if (dy < 60) panelEl.classList.add('expanded');
+
+const Sheet = (() => {
+  const PEEK = 112;          // px of sheet visible when collapsed (matches CSS)
+  const SPRING = 'transform .5s cubic-bezier(0.22, 1, 0.36, 1)';
+  const ORDER = ['collapsed', 'half', 'expanded'];
+
+  let state = 'collapsed';
+  let currentY = 0;          // current translateY in px
+  let drag = null;           // active drag session
+
+  const isMobile = () => window.innerWidth <= 900;
+  const panelH = () => panelEl.offsetHeight;
+
+  function offsets(){
+    const h = panelH();
+    return {
+      expanded: 0,
+      half: Math.round(h * 0.42),          // shows ~58% of the sheet
+      collapsed: Math.max(0, h - PEEK)
+    };
   }
-  sheetDrag = null;
-});
-// Also expand when user taps any tab on mobile
-document.querySelectorAll('.panel-tabs .tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    if (window.innerWidth <= 900){
-      panelEl.classList.add('expanded');
+  function offsetFor(s){ return offsets()[s]; }
+
+  function apply(y, animate){
+    currentY = y;
+    panelEl.style.transition = animate ? SPRING : 'none';
+    panelEl.style.transform = `translateY(${y}px)`;
+  }
+
+  function setState(s, animate = true){
+    if (!isMobile()) return;
+    state = s;
+    panelEl.classList.toggle('expanded', s !== 'collapsed');
+    apply(offsetFor(s), animate);
+  }
+
+  // Snap to whichever state the projected (position + velocity) point is nearest.
+  function settle(velocity){
+    const pts = offsets();
+    const projected = currentY + velocity * 80; // velocity px/ms → projection
+    let best = 'half', bestDist = Infinity;
+    for (const s of ORDER){
+      const d = Math.abs(pts[s] - projected);
+      if (d < bestDist){ bestDist = d; best = s; }
     }
-  });
-});
+    setState(best);
+  }
+
+  function onDown(e){
+    if (!isMobile()) return;
+    sheetHandle.setPointerCapture(e.pointerId);
+    drag = { startPointerY: e.clientY, startY: currentY,
+             lastY: e.clientY, lastT: e.timeStamp, v: 0 };
+    panelEl.style.transition = 'none';
+  }
+  function onMove(e){
+    if (!drag) return;
+    const max = offsetFor('collapsed');
+    const y = Math.min(max, Math.max(0, drag.startY + (e.clientY - drag.startPointerY)));
+    const dt = e.timeStamp - drag.lastT;
+    if (dt > 0) drag.v = (e.clientY - drag.lastY) / dt;
+    drag.lastY = e.clientY; drag.lastT = e.timeStamp;
+    apply(y, false);
+  }
+  function onUp(e){
+    if (!drag) return;
+    const totalDy = e.clientY - drag.startPointerY;
+    const v = drag.v;
+    drag = null;
+    if (Math.abs(totalDy) < 6){ cycle(); }   // tap on handle
+    else { settle(v); }
+  }
+
+  // Tap on the handle advances to the next state, wrapping at the top.
+  function cycle(){
+    const i = ORDER.indexOf(state);
+    setState(ORDER[(i + 1) % ORDER.length]);
+  }
+
+  // Public: open at least to half (used when a tool/tab is selected).
+  function open(){ if (isMobile() && state === 'collapsed') setState('half'); }
+  function close(){ setState('collapsed'); }
+  function toggle(){ setState(state === 'collapsed' ? 'half' : 'collapsed'); }
+
+  function sync(){
+    if (!isMobile()){
+      // Desktop side panel — clear mobile inline styles so CSS classes own it.
+      panelEl.style.transform = '';
+      panelEl.style.transition = '';
+    } else {
+      apply(offsetFor(state), false);
+    }
+  }
+
+  sheetHandle.addEventListener('pointerdown', onDown);
+  sheetHandle.addEventListener('pointermove', onMove);
+  sheetHandle.addEventListener('pointerup', onUp);
+  sheetHandle.addEventListener('pointercancel', onUp);
+  window.addEventListener('resize', sync);
+  // Initialise position once layout is ready.
+  requestAnimationFrame(sync);
+
+  return { open, close, toggle, setState, isMobile };
+})();
 
 // Layer list
 function rebuildLayerListUI(){
